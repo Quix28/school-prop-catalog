@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { api, getCurrentUser, signOut, type SessionUser } from '@/lib/client'
+import { useLiveData } from '@/lib/useLiveData'
 import type { Item } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 
@@ -9,7 +10,7 @@ export default function CatalogPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<SessionUser | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'prop' | 'costume'>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedItem, setSelectedItem] = useState<Item | null>(null)
@@ -23,9 +24,7 @@ export default function CatalogPage() {
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
-  useEffect(() => {
-    checkAuthAndLoad()
-  }, [])
+  useLiveData(() => checkAuthAndLoad())
 
   const checkAuthAndLoad = async () => {
     const user = await getCurrentUser()
@@ -57,6 +56,9 @@ export default function CatalogPage() {
       setSuccessMsg('Reservation submitted! Awaiting admin approval.')
       setSelectedItem(null)
       setReservationForm({ start_date: '', end_date: '', quantity: 1, purpose: '' })
+      // Pull fresh stock after reserving rather than assuming nothing changed.
+      const { items } = await api.get<{ items: Item[] }>('/api/items')
+      setItems(items || [])
     } catch (e: any) {
       setErrorMsg(e.message)
     } finally {

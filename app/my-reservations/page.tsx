@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { api, getCurrentUser } from '@/lib/client'
+import { useLiveData } from '@/lib/useLiveData'
 import type { Reservation } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 
@@ -55,7 +56,7 @@ export default function MyReservationsPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
 
-  useEffect(() => { loadReservations() }, [])
+  useLiveData(() => loadReservations())
 
   const loadReservations = async () => {
     const user = await getCurrentUser()

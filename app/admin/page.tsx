@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { api, getCurrentUser, signOut } from '@/lib/client'
+import { useLiveData } from '@/lib/useLiveData'
 import type { Item, Reservation } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 
@@ -30,7 +31,8 @@ export default function AdminPage() {
   image_url: ''
 })
 
-  useEffect(() => { checkAdminAndLoad() }, [])
+  // Reloads on focus too — a second admin approving something should show up here.
+  useLiveData(() => checkAdminAndLoad())
 
   const checkAdminAndLoad = async () => {
     const user = await getCurrentUser()
