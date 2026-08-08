@@ -27,7 +27,28 @@ someone's address is not enough to open an account in their name. For local work
 **In production you must configure SMTP** (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`)
 and set `APP_URL` to the address students will actually reach — the confirmation link is built
 from it. With SMTP missing, sign-up is refused rather than creating accounts nobody can confirm.
-Gmail works with an app password; the school's own relay is better if you can get credentials.
+Check the settings before relying on them:
+
+```sh
+node scripts/test-mail.mjs you@example.com
+```
+
+**Using Gmail:** you need an *App Password*, not the account password — Google disabled plain
+password SMTP in 2022. Turn on 2-Step Verification, then create one at
+<https://myaccount.google.com/apppasswords> and use it as `SMTP_PASS`.
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASS=abcd efgh ijkl mnop      # the 16-character app password
+```
+
+Two things to expect with Gmail: it **rewrites the From address** to your own account no matter
+what `SMTP_FROM` says (unless you set up a verified "Send mail as" alias), and free accounts are
+capped around **500 messages a day**. The school's own relay is better if you can get
+credentials — mail from a personal Gmail asking students to click a link looks like phishing and
+is more likely to be filtered.
 
 Links expire after 24 hours and are single-use. If a student registers an address they don't
 own, the real owner can still claim it later: an unconfirmed registration is overwritten rather
