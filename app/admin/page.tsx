@@ -19,6 +19,7 @@ export default function AdminPage() {
   const [items, setItems] = useState<Item[]>([])
   const [reservations, setReservations] = useState<ReservationWithDetails[]>([])
   const [statusFilter, setStatusFilter] = useState<string>('pending')
+  const [itemSubFilter, setItemSubFilter] = useState<string>('all')
   const [uploading, setUploading] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
   const [newItem, setNewItem] = useState({
@@ -118,6 +119,16 @@ export default function AdminPage() {
   )
 
   const pendingCount = reservations.filter(r => r.status === 'pending').length
+
+  // Built from the items actually present, so the buttons follow whatever subcategories
+  // have been typed in rather than a hardcoded list.
+  const itemSubcategories = Array.from(new Set(
+    items.map(i => i.subcategory?.trim()).filter((s): s is string => !!s)
+  )).sort((a, b) => a.localeCompare(b))
+
+  const filteredItems = items.filter(i =>
+    itemSubFilter === 'all' || i.subcategory?.trim() === itemSubFilter
+  )
 
   const statusColor: Record<string, string> = {
     pending: 'bg-yellow-100 text-yellow-800',
@@ -253,13 +264,34 @@ export default function AdminPage() {
 
         {/* ── ITEMS TAB ── */}
         {activeTab === 'items' && (
+          <div>
+            {itemSubcategories.length > 0 && (
+              <div className="flex gap-2 mb-5 flex-wrap items-center">
+                <span className="text-xs text-gray-400 mr-1">Subcategory:</span>
+                {['all', ...itemSubcategories].map(sub => (
+                  <button
+                    key={sub}
+                    onClick={() => setItemSubFilter(sub)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      itemSubFilter === sub
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-white border text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {sub === 'all' ? `All (${items.length})` : `${sub} (${items.filter(i => i.subcategory?.trim() === sub).length})`}
+                  </button>
+                ))}
+              </div>
+            )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {items.length === 0 ? (
+            {filteredItems.length === 0 ? (
               <div className="col-span-full text-center py-20 text-gray-400">
                 <p className="text-4xl mb-3">📦</p>
-                <p>No items yet. Add some from the "Add Item" tab.</p>
+                <p>{items.length === 0
+                  ? 'No items yet. Add some from the "Add Item" tab.'
+                  : `No items in "${itemSubFilter}".`}</p>
               </div>
-            ) : items.map(item => (
+            ) : filteredItems.map(item => (
               <div key={item.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
                 <div className="h-40 bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center overflow-hidden">
                   {item.image_url
@@ -287,6 +319,7 @@ export default function AdminPage() {
                 </div>
               </div>
             ))}
+          </div>
           </div>
         )}
 

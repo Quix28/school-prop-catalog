@@ -12,6 +12,7 @@ export default function CatalogPage() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<SessionUser | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'prop' | 'costume'>('all')
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedItem, setSelectedItem] = useState<Item | null>(null)
   const [reserving, setReserving] = useState(false)
@@ -66,12 +67,30 @@ export default function CatalogPage() {
     }
   }
 
+  // Offer only subcategories that exist inside the chosen category, so the buttons can
+  // never present a combination with no items behind it.
+  const subcategories = Array.from(new Set(
+    items
+      .filter(i => selectedCategory === 'all' || i.category === selectedCategory)
+      .map(i => i.subcategory?.trim())
+      .filter((s): s is string => !!s)
+  )).sort((a, b) => a.localeCompare(b))
+
+  // Changing category clears the subcategory: keeping it would silently filter to nothing
+  // (e.g. "Hats" still selected after switching to Props) with no visible reason.
+  const chooseCategory = (cat: 'all' | 'prop' | 'costume') => {
+    setSelectedCategory(cat)
+    setSelectedSubcategory('all')
+  }
+
   const filtered = items.filter(item => {
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory
+    const matchesSubcategory = selectedSubcategory === 'all'
+      || item.subcategory?.trim() === selectedSubcategory
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.subcategory?.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesCategory && matchesSearch
+    return matchesCategory && matchesSubcategory && matchesSearch
   })
 
   if (loading) return (
@@ -107,29 +126,51 @@ export default function CatalogPage() {
       )}
 
       {/* Search & Filter */}
-      <div className="bg-white border-b px-6 py-4 flex flex-col sm:flex-row gap-3">
-        <input
-          type="text"
-          placeholder="Search items..."
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-        />
-        <div className="flex gap-2">
-          {(['all', 'prop', 'costume'] as const).map(cat => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-4 py-2 rounded-lg font-medium text-sm capitalize transition-colors ${
-                selectedCategory === cat
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+      <div className="bg-white border-b px-6 py-4 space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <input
+            type="text"
+            placeholder="Search items..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          />
+          <div className="flex gap-2">
+            {(['all', 'prop', 'costume'] as const).map(cat => (
+              <button
+                key={cat}
+                onClick={() => chooseCategory(cat)}
+                className={`px-4 py-2 rounded-lg font-medium text-sm capitalize transition-colors ${
+                  selectedCategory === cat
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* Subcategory pills — hidden entirely when no item has a subcategory yet */}
+        {subcategories.length > 0 && (
+          <div className="flex gap-2 flex-wrap items-center">
+            <span className="text-xs text-gray-400 mr-1">Subcategory:</span>
+            {['all', ...subcategories].map(sub => (
+              <button
+                key={sub}
+                onClick={() => setSelectedSubcategory(sub)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  selectedSubcategory === sub
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {sub === 'all' ? 'All' : sub}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Grid */}
