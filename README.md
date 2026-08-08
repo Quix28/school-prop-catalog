@@ -18,6 +18,21 @@ npm run dev                    # http://localhost:3000
 
 Students register themselves at `/signup`; admins sign in at `/admin-login`.
 
+### Email confirmation
+
+Sign-up sends a confirmation link and the account stays inert until it is opened, so knowing
+someone's address is not enough to open an account in their name. For local work set
+`MAIL_TRANSPORT=console` and the link is printed to the server log instead of being sent.
+
+**In production you must configure SMTP** (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`)
+and set `APP_URL` to the address students will actually reach — the confirmation link is built
+from it. With SMTP missing, sign-up is refused rather than creating accounts nobody can confirm.
+Gmail works with an app password; the school's own relay is better if you can get credentials.
+
+Links expire after 24 hours and are single-use. If a student registers an address they don't
+own, the real owner can still claim it later: an unconfirmed registration is overwritten rather
+than blocking the address, so nobody can squat a classmate's email.
+
 ## Deploying to a Raspberry Pi 4
 
 ### 1. Build somewhere other than the Pi

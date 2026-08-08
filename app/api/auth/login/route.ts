@@ -24,15 +24,25 @@ export function POST(req: Request) {
     }
 
     const row = db.prepare(
-      'SELECT id, email, full_name, role, password_hash FROM profiles WHERE email = ?'
+      'SELECT id, email, full_name, role, password_hash, verified_at FROM profiles WHERE email = ?'
     ).get(normalized) as
-      { id: string; email: string; full_name: string | null; role: 'student' | 'admin'; password_hash: string } | undefined
+      { id: string; email: string; full_name: string | null; role: 'student' | 'admin';
+        password_hash: string; verified_at: string | null } | undefined
 
     // One generic message for "no such user" and "wrong password" — a distinct reply would
     // let anyone enumerate which school addresses have accounts.
     const invalid = Response.json({ error: 'Invalid email or password' }, { status: 401 })
     if (!row) return invalid
     if (!(await verifyPassword(password, row.password_hash))) return invalid
+
+    // Checked only after the password is correct, so this cannot be used to discover which
+    // addresses have unconfirmed accounts.
+    if (!row.verified_at) {
+      return Response.json({
+        error: 'Confirm your email address first — check your inbox for the link.',
+        unverified: true,
+      }, { status: 403 })
+    }
 
     resetLimit(key)
     const { token, expires } = createSession(row.id)

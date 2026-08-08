@@ -25,6 +25,9 @@ db.exec(`
     full_name     TEXT,
     role          TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('student','admin')),
     password_hash TEXT NOT NULL,
+    verified_at        TEXT,
+    verify_token_hash  TEXT,
+    verify_expires_at  TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -62,11 +65,12 @@ const hash = `${salt.toString('hex')}:${key.toString('hex')}`
 
 const existing = db.prepare('SELECT id FROM profiles WHERE email = ?').get(email)
 if (existing) {
-  db.prepare(`UPDATE profiles SET role = 'admin', password_hash = ?, updated_at = datetime('now') WHERE id = ?`)
+  // Mark verified: an admin created at the console has proven itself by having shell access.
+  db.prepare(`UPDATE profiles SET role = 'admin', password_hash = ?, verified_at = COALESCE(verified_at, datetime('now')), verify_token_hash = NULL, updated_at = datetime('now') WHERE id = ?`)
     .run(hash, existing.id)
   console.log(`\nExisting account ${email} promoted to admin and password reset.`)
 } else {
-  db.prepare(`INSERT INTO profiles (id, email, full_name, role, password_hash) VALUES (?, ?, ?, 'admin', ?)`)
+  db.prepare(`INSERT INTO profiles (id, email, full_name, role, password_hash, verified_at) VALUES (?, ?, ?, 'admin', ?, datetime('now'))`)
     .run(randomUUID(), email, fullName || null, hash)
   console.log(`\nAdmin account created: ${email}`)
 }

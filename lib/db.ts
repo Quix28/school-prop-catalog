@@ -22,6 +22,10 @@ db.exec(`
     full_name     TEXT,
     role          TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('student','admin')),
     password_hash TEXT NOT NULL,
+    -- Null until the address is proven: the account exists but cannot sign in.
+    verified_at        TEXT,
+    verify_token_hash  TEXT,
+    verify_expires_at  TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -72,7 +76,36 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_items_name ON items(name);
 `)
 
+// --- migrations for databases created before email verification existed ---
+// SQLite has no ADD COLUMN IF NOT EXISTS, so check the table shape first.
+{
+  const columns = new Set(
+    (db.prepare(`PRAGMA table_info(profiles)`).all() as { name: string }[]).map(c => c.name)
+  )
+  for (const [col, decl] of [
+    ['verified_at', 'TEXT'],
+    ['verify_token_hash', 'TEXT'],
+    ['verify_expires_at', 'TEXT'],
+  ] as const) {
+    if (!columns.has(col)) db.exec(`ALTER TABLE profiles ADD COLUMN ${col} ${decl}`)
+  }
+  // Accounts that predate verification are grandfathered in, otherwise the existing admin
+  // would be locked out by an upgrade. Only rows with no pending token qualify.
+  db.exec(`
+    UPDATE profiles SET verified_at = created_at
+     WHERE verified_at IS NULL AND verify_token_hash IS NULL
+  `)
+}
+
 // Expired sessions are dead weight; clearing them at startup is enough at this scale.
 db.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run()
+
+// Unclaimed signups must not squat an address forever — otherwise registering
+// someone else's email would permanently block the real owner from ever signing up.
+db.prepare(`
+  DELETE FROM profiles
+   WHERE verified_at IS NULL AND verify_expires_at IS NOT NULL
+     AND verify_expires_at < datetime('now','-7 days')
+`).run()
 
 export default db

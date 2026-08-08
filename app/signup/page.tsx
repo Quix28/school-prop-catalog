@@ -5,10 +5,8 @@
 
 import { useState } from 'react'
 import { api } from '@/lib/client'
-import { useRouter } from 'next/navigation'
 
 export default function SignupPage() {
-  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -49,12 +47,9 @@ export default function SignupPage() {
         fullName: formData.fullName,
       })
 
+      // No redirect: the account cannot be used until the emailed link is opened.
       setSuccess(true)
-      
-      // Redirect to catalog after 2 seconds
-      setTimeout(() => {
-        router.push('/catalog')
-      }, 2000)
+      setLoading(false)
       
     } catch (error: any) {
       setError(error.message || 'Failed to create account')
@@ -91,7 +86,8 @@ export default function SignupPage() {
         {success && (
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm text-green-600">
-              ✓ Account created successfully! Redirecting...
+              ✓ Almost there — open the confirmation link we just emailed to{' '}
+              <strong>{formData.email}</strong> to activate your account.
             </p>
           </div>
         )}
