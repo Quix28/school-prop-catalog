@@ -1,10 +1,6 @@
-import { createBrowserClient } from '@supabase/ssr'
+// Shared row shapes. Same fields the Supabase version exposed, so the pages'
+// rendering code did not need to change — only where the data comes from.
 
-export const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-// TypeScript types for database
 export type Profile = {
   id: string
   email: string
@@ -47,3 +43,5 @@ export type Reservation = {
   checked_out_at: string | null
   returned_at: string | null
 }
+
+export type SessionUser = Pick<Profile, 'id' | 'email' | 'full_name' | 'role'>

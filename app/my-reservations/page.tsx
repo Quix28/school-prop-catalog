@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, Reservation } from '@/lib/supabase'
+import { api, getCurrentUser } from '@/lib/client'
+import type { Reservation } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 
 type ReservationWithItem = Reservation & {
@@ -57,27 +58,26 @@ export default function MyReservationsPage() {
   useEffect(() => { loadReservations() }, [])
 
   const loadReservations = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getCurrentUser()
     if (!user) { router.push('/login'); return }
 
-    const { data } = await supabase
-      .from('reservations')
-      .select('*, items(name, image_url)')
-      .eq('user_id', user.id)
-      .order('requested_at', { ascending: false })
+    // The API already scopes this to the signed-in user and joins the item.
+    const { reservations } = await api.get<{ reservations: any[] }>('/api/reservations')
 
-    setReservations((data || []).map((r: any) => ({
+    setReservations((reservations || []).map(r => ({
       ...r,
-      item_name: r.items?.name || 'Unknown Item',
-      item_image: r.items?.image_url || null
+      item_name: r.item_name || 'Unknown Item',
+      item_image: r.item_image || null,
     })))
     setLoading(false)
   }
 
   const handleCancel = async (id: string) => {
     if (!confirm('Cancel this reservation?')) return
-    await supabase.from('reservations').update({ status: 'cancelled' }).eq('id', id)
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, status: 'cancelled' } : r))
+    try {
+      await api.patch(`/api/reservations/${id}`, { status: 'cancelled' })
+      setReservations(prev => prev.map(r => r.id === id ? { ...r, status: 'cancelled' } : r))
+    } catch (e: any) { alert(e.message) }
   }
 
   const filtered = filter === 'all' ? reservations : reservations.filter(r => r.status === filter)

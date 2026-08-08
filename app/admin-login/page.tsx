@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/client'
 import { useRouter } from 'next/navigation'
 
 export default function AdminLoginPage() {
@@ -17,22 +17,12 @@ export default function AdminLoginPage() {
       setLoading(true)
       setError('')
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      const { user } = await api.post<{ user: { role: string } }>('/api/auth/login', { email, password })
 
-      if (error) throw error
-
-      // Check if user has admin role
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', data.user.id)
-        .single()
-
-      if (profile?.role !== 'admin') {
-        await supabase.auth.signOut()
+      // The role comes back from the server with the session. This check only decides where
+      // to send the user — every admin API route re-checks the role independently.
+      if (user.role !== 'admin') {
+        await api.post('/api/auth/logout')
         throw new Error('You do not have admin privileges.')
       }
 

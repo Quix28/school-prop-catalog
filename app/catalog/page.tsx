@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, Item } from '@/lib/supabase'
+import { api, getCurrentUser, signOut, type SessionUser } from '@/lib/client'
+import type { Item } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 
 export default function CatalogPage() {
@@ -27,16 +28,16 @@ export default function CatalogPage() {
   }, [])
 
   const checkAuthAndLoad = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getCurrentUser()
     if (!user) { router.push('/login'); return }
     setUser(user)
-    const { data } = await supabase.from('items').select('*').order('name')
-    setItems(data || [])
+    const { items } = await api.get<{ items: Item[] }>('/api/items')
+    setItems(items || [])
     setLoading(false)
   }
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
+    await signOut()
     router.push('/login')
   }
 
@@ -45,16 +46,14 @@ export default function CatalogPage() {
     setReserving(true)
     setErrorMsg('')
     try {
-      const { error } = await supabase.from('reservations').insert({
+      // user_id and status are set server-side from the session.
+      await api.post('/api/reservations', {
         item_id: selectedItem.id,
-        user_id: user.id,
         quantity: reservationForm.quantity,
         start_date: reservationForm.start_date,
         end_date: reservationForm.end_date,
         purpose: reservationForm.purpose,
-        status: 'pending'
       })
-      if (error) throw error
       setSuccessMsg('Reservation submitted! Awaiting admin approval.')
       setSelectedItem(null)
       setReservationForm({ start_date: '', end_date: '', quantity: 1, purpose: '' })

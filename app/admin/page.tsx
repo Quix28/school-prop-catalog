@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { supabase, Item, Reservation } from '@/lib/supabase'
+import { api, getCurrentUser, signOut } from '@/lib/client'
+import type { Item, Reservation } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 
 type ReservationWithDetails = Reservation & {
@@ -32,44 +33,38 @@ export default function AdminPage() {
   useEffect(() => { checkAdminAndLoad() }, [])
 
   const checkAdminAndLoad = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getCurrentUser()
     if (!user) { router.push('/admin-login'); return }
-
-    const { data: profile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
-
-    if (profile?.role !== 'admin') { router.push('/login'); return }
+    // This redirect is convenience only — the API enforces admin on every write.
+    if (user.role !== 'admin') { router.push('/login'); return }
 
     await loadData()
     setLoading(false)
   }
 
   const loadData = async () => {
-    const [{ data: itemsData }, { data: resData }, { data: profilesData }] = await Promise.all([
-      supabase.from('items').select('*').order('name'),
-      supabase.from('reservations').select('*, items(name)').order('requested_at', { ascending: false }),
-      supabase.from('profiles').select('id, email')
+    // The API joins items and profiles server-side, so the separate profile lookup is gone.
+    const [{ items: itemsData }, { reservations: resData }] = await Promise.all([
+      api.get<{ items: Item[] }>('/api/items'),
+      api.get<{ reservations: ReservationWithDetails[] }>('/api/reservations'),
     ])
 
-    const profileMap: Record<string, string> = {}
-    profilesData?.forEach(p => { profileMap[p.id] = p.email })
-
     setItems(itemsData || [])
-    setReservations((resData || []).map((r: any) => ({
+    setReservations((resData || []).map(r => ({
       ...r,
-      item_name: r.items?.name || 'Unknown',
-      user_email: profileMap[r.user_id] || r.user_id?.slice(0, 8)
+      item_name: r.item_name || 'Unknown',
+      user_email: r.user_email || r.user_id?.slice(0, 8),
     })))
   }
 
   const updateReservationStatus = async (id: string, status: string) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('reservations').update({
-      status,
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: user?.id
-    }).eq('id', id)
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, status: status as any } : r))
+    try {
+      // reviewed_at / reviewed_by are stamped server-side from the session.
+      await api.patch(`/api/reservations/${id}`, { status })
+      setReservations(prev => prev.map(r => r.id === id ? { ...r, status: status as any } : r))
+    } catch (e: any) {
+      alert(e.message)
+    }
   }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -77,12 +72,9 @@ export default function AdminPage() {
     if (!file) return
     setUploading(true)
     try {
-      const ext = file.name.split('.').pop()
-      const path = `items/${Date.now()}.${ext}`
-      const { error } = await supabase.storage.from('item-images').upload(path, file)
-      if (error) throw error
-      const { data } = supabase.storage.from('item-images').getPublicUrl(path)
-      setNewItem(prev => ({ ...prev, image_url: data.publicUrl }))
+      // The server validates the type, caps the size and names the file.
+      const { url } = await api.upload<{ url: string }>('/api/upload', file)
+      setNewItem(prev => ({ ...prev, image_url: url }))
     } catch (e: any) {
       alert('Image upload failed: ' + e.message)
     } finally {
@@ -93,15 +85,13 @@ export default function AdminPage() {
   const handleAddItem = async () => {
     if (!newItem.name) return
     setSaveMsg('')
-    const { data: { user } } = await supabase.auth.getUser()
     const { quantity_total, name, description, category, subcategory, notes, image_url } = newItem
-    const { error } = await supabase.from('items').insert({
-    name, description, category, subcategory, notes, image_url,
-    quantity_total,
-    quantity_available: quantity_total,
-    created_by: user?.id
-    })
-    if (error) { alert(error.message); return }
+    try {
+      // created_by and quantity_available are set server-side.
+      await api.post('/api/items', {
+        name, description, category, subcategory, notes, image_url, quantity_total,
+      })
+    } catch (e: any) { alert(e.message); return }
     setSaveMsg('Item added successfully!')
     setNewItem({ name: '', description: '', category: 'prop', subcategory: '', quantity_total: 1, notes: '', image_url: '' })
     await loadData()
@@ -110,12 +100,14 @@ export default function AdminPage() {
 
   const handleDeleteItem = async (id: string) => {
     if (!confirm('Delete this item?')) return
-    await supabase.from('items').delete().eq('id', id)
-    setItems(prev => prev.filter(i => i.id !== id))
+    try {
+      await api.del(`/api/items/${id}`)
+      setItems(prev => prev.filter(i => i.id !== id))
+    } catch (e: any) { alert(e.message) }
   }
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
+    await signOut()
     router.push('/admin-login')
   }
 

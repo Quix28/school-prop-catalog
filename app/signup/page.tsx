@@ -4,7 +4,7 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/client'
 import { useRouter } from 'next/navigation'
 
 export default function SignupPage() {
@@ -36,25 +36,18 @@ export default function SignupPage() {
       if (formData.password.length < 6) {
         throw new Error('Password must be at least 6 characters')
       }
-      if (formData.password.length < 6) {
-            throw new Error('Password must be at least 6 characters')
-            }
             const allowedDomain = 'robcol.k12.tr'
             if (!formData.email.toLowerCase().endsWith(`@${allowedDomain}`)) {
             throw new Error(`Only @${allowedDomain} email addresses can register`)
             }
 
-      const { data, error } = await supabase.auth.signUp({
+      // These same rules are enforced server-side in /api/auth/signup; the checks above are
+      // only for fast feedback and can be bypassed, which is why the server repeats them.
+      await api.post('/api/auth/signup', {
         email: formData.email,
         password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName
-          }
-        }
+        fullName: formData.fullName,
       })
-
-      if (error) throw error
 
       setSuccess(true)
       

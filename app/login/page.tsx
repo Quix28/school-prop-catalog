@@ -4,7 +4,7 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/client'
 import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
@@ -21,12 +21,8 @@ export default function LoginPage() {
       setLoading(true)
       setError('')
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) throw error
+      // api.post throws with the server's message on a non-2xx, so no error flag to check.
+      await api.post('/api/auth/login', { email, password })
 
       // Success - redirect to catalog
       router.push('/catalog')
