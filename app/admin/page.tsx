@@ -11,15 +11,29 @@ type ReservationWithDetails = Reservation & {
   user_email?: string
 }
 
+type UserRow = {
+  id: string
+  email: string
+  full_name: string | null
+  role: 'student' | 'admin'
+  created_at: string
+  reservation_count: number
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'reservations' | 'items' | 'add'>('reservations')
+  const [activeTab, setActiveTab] = useState<'reservations' | 'items' | 'add' | 'users'>('reservations')
   const [items, setItems] = useState<Item[]>([])
   const [reservations, setReservations] = useState<ReservationWithDetails[]>([])
   const [statusFilter, setStatusFilter] = useState<string>('pending')
   const [itemSubFilter, setItemSubFilter] = useState<string>('all')
+  const [itemSearch, setItemSearch] = useState('')
+  const [users, setUsers] = useState<UserRow[]>([])
+  const [me, setMe] = useState<string>('')
+  const [promoteCode, setPromoteCode] = useState('')
+  const [userMsg, setUserMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
   const [newItem, setNewItem] = useState({
@@ -40,6 +54,7 @@ export default function AdminPage() {
     if (!user) { router.push('/admin-login'); return }
     // This redirect is convenience only — the API enforces admin on every write.
     if (user.role !== 'admin') { router.push('/login'); return }
+    setMe(user.id)
 
     await loadData()
     setLoading(false)
@@ -47,10 +62,12 @@ export default function AdminPage() {
 
   const loadData = async () => {
     // The API joins items and profiles server-side, so the separate profile lookup is gone.
-    const [{ items: itemsData }, { reservations: resData }] = await Promise.all([
+    const [{ items: itemsData }, { reservations: resData }, { users: usersData }] = await Promise.all([
       api.get<{ items: Item[] }>('/api/items'),
       api.get<{ reservations: ReservationWithDetails[] }>('/api/reservations'),
+      api.get<{ users: UserRow[] }>('/api/users'),
     ])
+    setUsers(usersData || [])
 
     setItems(itemsData || [])
     setReservations((resData || []).map(r => ({
@@ -109,6 +126,19 @@ export default function AdminPage() {
     } catch (e: any) { alert(e.message) }
   }
 
+  const changeRole = async (u: UserRow, role: 'admin' | 'student') => {
+    setUserMsg(null)
+    if (!promoteCode) { setUserMsg({ text: 'Enter the confirmation code first.', ok: false }); return }
+    try {
+      // The code is verified on the server; sending it from here is not the check.
+      await api.patch(`/api/users/${u.id}`, { role, code: promoteCode })
+      setUsers(prev => prev.map(x => x.id === u.id ? { ...x, role } : x))
+      setUserMsg({ text: `${u.email} is now ${role === 'admin' ? 'an admin' : 'a student'}.`, ok: true })
+    } catch (e: any) {
+      setUserMsg({ text: e.message, ok: false })
+    }
+  }
+
   const handleSignOut = async () => {
     await signOut()
     router.push('/admin-login')
@@ -126,9 +156,16 @@ export default function AdminPage() {
     items.map(i => i.subcategory?.trim()).filter((s): s is string => !!s)
   )).sort((a, b) => a.localeCompare(b))
 
-  const filteredItems = items.filter(i =>
-    itemSubFilter === 'all' || i.subcategory?.trim() === itemSubFilter
-  )
+  const filteredItems = items.filter(i => {
+    const matchesSub = itemSubFilter === 'all' || i.subcategory?.trim() === itemSubFilter
+    // Same fields the student catalog searches, so results match between the two views.
+    const q = itemSearch.toLowerCase()
+    const matchesSearch = !q
+      || i.name.toLowerCase().includes(q)
+      || !!i.description?.toLowerCase().includes(q)
+      || !!i.subcategory?.toLowerCase().includes(q)
+    return matchesSub && matchesSearch
+  })
 
   const statusColor: Record<string, string> = {
     pending: 'bg-yellow-100 text-yellow-800',
@@ -164,6 +201,7 @@ export default function AdminPage() {
           { id: 'reservations', label: `Reservations${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}` },
           { id: 'items', label: `Items (${items.length})` },
           { id: 'add', label: '+ Add Item' },
+          { id: 'users', label: `Users (${users.length})` },
         ].map(tab => (
           <button
             key={tab.id}
@@ -265,6 +303,13 @@ export default function AdminPage() {
         {/* ── ITEMS TAB ── */}
         {activeTab === 'items' && (
           <div>
+            <input
+              type="text"
+              placeholder="Search items..."
+              value={itemSearch}
+              onChange={e => setItemSearch(e.target.value)}
+              className="w-full mb-4 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
             {itemSubcategories.length > 0 && (
               <div className="flex gap-2 mb-5 flex-wrap items-center">
                 <span className="text-xs text-gray-400 mr-1">Subcategory:</span>
@@ -289,7 +334,9 @@ export default function AdminPage() {
                 <p className="text-4xl mb-3">📦</p>
                 <p>{items.length === 0
                   ? 'No items yet. Add some from the "Add Item" tab.'
-                  : `No items in "${itemSubFilter}".`}</p>
+                  : itemSearch
+                    ? `Nothing matches "${itemSearch}".`
+                    : `No items in "${itemSubFilter}".`}</p>
               </div>
             ) : filteredItems.map(item => (
               <div key={item.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -435,6 +482,80 @@ export default function AdminPage() {
               >
                 Add Item to Catalog
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── USERS TAB ── */}
+        {activeTab === 'users' && (
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-white rounded-2xl shadow-sm p-5 mb-5">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Confirmation code
+              </label>
+              <input
+                type="password"
+                value={promoteCode}
+                onChange={e => setPromoteCode(e.target.value)}
+                placeholder="Required to change any role"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500"
+              />
+              <p className="text-xs text-gray-400 mt-2">
+                Verified on the server. Roles cannot be changed without it.
+              </p>
+            </div>
+
+            {userMsg && (
+              <div className={`mb-4 p-3 rounded-lg text-sm border ${
+                userMsg.ok
+                  ? 'bg-green-50 border-green-200 text-green-700'
+                  : 'bg-red-50 border-red-200 text-red-700'
+              }`}>
+                {userMsg.ok ? '✅' : '⚠️'} {userMsg.text}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {users.map(u => (
+                <div key={u.id} className="bg-white rounded-xl shadow-sm p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900 truncate">{u.full_name || u.email}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {u.role}
+                      </span>
+                      {u.id === me && <span className="text-xs text-gray-400">(you)</span>}
+                    </div>
+                    <p className="text-sm text-gray-500 truncate">{u.email}</p>
+                    <p className="text-xs text-gray-400">
+                      {u.reservation_count} reservation{u.reservation_count === 1 ? '' : 's'} · joined {u.created_at?.slice(0, 10)}
+                    </p>
+                  </div>
+
+                  <div className="shrink-0">
+                    {u.role === 'student' ? (
+                      <button
+                        onClick={() => changeRole(u, 'admin')}
+                        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                      >
+                        Make Admin
+                      </button>
+                    ) : u.id === me ? (
+                      // Demoting yourself locks you out of this very panel.
+                      <span className="text-xs text-gray-400">Can&apos;t change your own role</span>
+                    ) : (
+                      <button
+                        onClick={() => changeRole(u, 'student')}
+                        className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium"
+                      >
+                        Remove Admin
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
