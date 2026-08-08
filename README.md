@@ -41,17 +41,30 @@ sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile
 sudo dphys-swapfile setup && sudo dphys-swapfile swapon
 ```
 
-### 2. Rebuild the native module for ARM
+### 2. Replace the native module on the Pi
 
-`better-sqlite3` is a compiled binding, so the copy built on an x86/arm64 Mac will not load
-on the Pi. On the Pi:
+`better-sqlite3` is a compiled binding. The copy that comes across in `standalone/` is a
+**macOS (Mach-O) binary** and will not load on Linux — the server exits on first request with
+an "invalid ELF header" style error.
+
+`npm rebuild` does **not** work here: the standalone output ships only `build/`, `lib/` and
+`package.json`, with `binding.gyp`, `src/` and `deps/` stripped, so there is nothing to compile.
+Install it fresh instead, which fetches the full package and builds it for linux-arm64:
 
 ```sh
 sudo apt install -y build-essential python3
-cd /srv/prop-catalog && npm rebuild better-sqlite3
+cd /srv/prop-catalog
+npm install better-sqlite3@12.11.1        # match the version in package.json
 ```
 
-Node major version must match what you built with (check `node -v` on both).
+Expect a few minutes — it compiles the SQLite amalgamation. Node's major version on the Pi
+must match the one you built with (`node -v` on both), or the ABI won't line up.
+
+Verify before starting the service:
+
+```sh
+node -e "require('better-sqlite3'); console.log('native module OK')"
+```
 
 ### 3. Put the data on an SSD, not the SD card
 
