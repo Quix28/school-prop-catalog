@@ -33,6 +33,17 @@ Check the settings before relying on them:
 node scripts/test-mail.mjs you@example.com
 ```
 
+**Using a school Office 365 / Outlook account:** likely to fail with
+`535 5.7.139 ... SmtpClientAuthentication is disabled for the Tenant`. Microsoft has disabled
+SMTP AUTH by default on every tenant since 2020, and no password will work until an
+administrator enables it for the mailbox:
+
+```powershell
+Set-CASMailbox -Identity you@school.tr -SmtpClientAuthenticationDisabled $false
+```
+
+That is a request for whoever runs the school's Microsoft tenant. Until then, use another relay.
+
 **Using Gmail:** you need an *App Password*, not the account password — Google disabled plain
 password SMTP in 2022. Turn on 2-Step Verification, then create one at
 <https://myaccount.google.com/apppasswords> and use it as `SMTP_PASS`.

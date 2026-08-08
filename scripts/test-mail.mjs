@@ -49,5 +49,11 @@ try {
     console.error('  Gmail rejects normal passwords. Generate an App Password at')
     console.error('  https://myaccount.google.com/apppasswords (needs 2-Step Verification on).')
   }
+  if (/SmtpClientAuthentication is disabled/i.test(e.message)) {
+    console.error('  Not a password problem: Microsoft disables SMTP AUTH by default on every')
+    console.error('  Office 365 tenant. Only an admin can enable it, per mailbox:')
+    console.error('    Set-CASMailbox -Identity <you@school> -SmtpClientAuthenticationDisabled $false')
+    console.error('  Until IT does that, use a different relay (e.g. Gmail + App Password).')
+  }
   process.exit(1)
 }
