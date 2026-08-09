@@ -33,14 +33,20 @@ export function resetLimit(key: string) {
 }
 
 /**
- * Best-effort client IP. Behind a reverse proxy the socket address is the proxy, so we read
- * the forwarded headers it sets. These are spoofable if the app is reachable directly —
- * which is why the limiter keys on IP *and* email rather than IP alone.
+ * Best-effort client IP. Forwarded headers are attacker-controlled unless a trusted proxy
+ * sets them — if the app is reachable directly, anyone can rotate X-Forwarded-For to dodge
+ * the limiter entirely. So we only read those headers when TRUST_PROXY=true (set it once a
+ * reverse proxy like Caddy/nginx terminates in front). Otherwise every direct client keys to
+ * the same 'unknown', which combined with the per-email key still throttles password guessing.
  */
 export function clientIp(req: Request): string {
-  const fwd = req.headers.get('x-forwarded-for')
-  if (fwd) return fwd.split(',')[0].trim()
-  return req.headers.get('x-real-ip') || 'unknown'
+  if (process.env.TRUST_PROXY === 'true') {
+    const fwd = req.headers.get('x-forwarded-for')
+    if (fwd) return fwd.split(',')[0].trim()
+    const real = req.headers.get('x-real-ip')
+    if (real) return real
+  }
+  return 'unknown'
 }
 
 // Keep the map from growing without bound if the process runs for months.

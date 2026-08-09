@@ -2,12 +2,19 @@ import db from '@/lib/db'
 import { handler, newId, requireAdmin, requireUser } from '@/lib/auth'
 import type { Item } from '@/lib/types'
 
-type ItemRow = Omit<Item, 'additional_images'> & { additional_images: string | null }
+type ItemRow = Omit<Item, 'additional_images'> & { additional_images: string | null; held: number }
+
+/** Reservation statuses that hold a unit out of circulation until they end or are cancelled. */
+export const HELD_STATUSES = ['pending', 'approved', 'checked_out'] as const
 
 /** additional_images was a Postgres text[]; in SQLite it is a JSON string. */
 function toItem(row: ItemRow): Item {
+  const { held, ...rest } = row
   return {
-    ...row,
+    ...rest,
+    // Availability is derived, not stored: the stored column drifted because nothing ever
+    // decremented it. total minus units currently held is always correct by construction.
+    quantity_available: Math.max(0, row.quantity_total - held),
     additional_images: row.additional_images ? JSON.parse(row.additional_images) : null,
   }
 }
@@ -15,7 +22,14 @@ function toItem(row: ItemRow): Item {
 export function GET() {
   return handler(async () => {
     await requireUser()
-    const rows = db.prepare('SELECT * FROM items ORDER BY name').all() as ItemRow[]
+    const rows = db.prepare(`
+      SELECT i.*,
+             COALESCE((SELECT SUM(r.quantity) FROM reservations r
+                        WHERE r.item_id = i.id
+                          AND r.status IN ('pending','approved','checked_out')), 0) AS held
+        FROM items i
+       ORDER BY i.name
+    `).all() as ItemRow[]
     return Response.json({ items: rows.map(toItem) })
   })
 }
@@ -50,7 +64,8 @@ export function POST(req: Request) {
       admin.id,
     )
 
-    const row = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as ItemRow
+    // A brand-new item holds nothing yet, so held is 0.
+    const row = db.prepare('SELECT *, 0 AS held FROM items WHERE id = ?').get(id) as ItemRow
     return Response.json({ item: toItem(row) }, { status: 201 })
   })
 }

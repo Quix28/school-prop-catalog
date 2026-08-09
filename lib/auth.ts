@@ -94,7 +94,9 @@ export const newId = () => randomUUID()
 export function handler(fn: () => Promise<Response>): Promise<Response> {
   return fn().catch(e => {
     if (e instanceof Response) return e
+    // Log the real error server-side; never return e.message to the client — a raw SQLite or
+    // internal message would disclose schema/query details.
     console.error(e)
-    return Response.json({ error: e?.message || 'Server error' }, { status: 500 })
+    return Response.json({ error: 'Server error' }, { status: 500 })
   })
 }

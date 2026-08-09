@@ -52,8 +52,19 @@ export function POST(req: Request) {
     const quantity = Number.isFinite(Number(body.quantity))
       ? Math.max(1, Math.floor(Number(body.quantity)))
       : 1
-    if (quantity > item.quantity_total) {
-      return Response.json({ error: `Only ${item.quantity_total} in stock` }, { status: 400 })
+
+    // Check against what is actually free, not total stock — otherwise the same unit can be
+    // booked over and over. No await between this read and the insert below, and better-sqlite3
+    // is synchronous, so there is no window for two requests to both pass the check.
+    const { held } = db.prepare(`
+      SELECT COALESCE(SUM(quantity), 0) AS held FROM reservations
+       WHERE item_id = ? AND status IN ('pending','approved','checked_out')
+    `).get(itemId) as { held: number }
+    const available = item.quantity_total - held
+    if (quantity > available) {
+      return Response.json(
+        { error: available > 0 ? `Only ${available} available` : 'None available' },
+        { status: 400 })
     }
 
     const id = newId()
