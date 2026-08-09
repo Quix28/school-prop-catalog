@@ -1,6 +1,6 @@
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { join, normalize, extname } from 'node:path'
+import { join, normalize, extname, sep } from 'node:path'
 import { Readable } from 'node:stream'
 import { UPLOAD_DIR } from '@/lib/db'
 import { handler } from '@/lib/auth'
@@ -18,9 +18,10 @@ export function GET(_req: Request, { params }: { params: Promise<{ path: string[
     const { path } = await params
 
     // Resolve, then confirm the result is still inside UPLOAD_DIR. Without this check a
-    // request for ../../etc/passwd would escape the directory.
+    // request for ../../etc/passwd would escape the directory. Match on a trailing
+    // separator so a sibling like `<DATA_DIR>/uploads-evil` cannot pass a bare prefix test.
     const target = normalize(join(UPLOAD_DIR, ...path))
-    if (!target.startsWith(UPLOAD_DIR)) {
+    if (target !== UPLOAD_DIR && !target.startsWith(UPLOAD_DIR + sep)) {
       return Response.json({ error: 'Not found' }, { status: 404 })
     }
 
