@@ -38,6 +38,12 @@ export function GET(_req: Request, { params }: { params: Promise<{ path: string[
         'Content-Length': String(info.size),
         // Filenames are random UUIDs, so a file's contents never change under a given URL.
         'Cache-Control': 'public, max-age=31536000, immutable',
+        // Defense in depth for a polyglot upload (e.g. GIF header + <script>): never let the
+        // browser sniff it to HTML, force it to be treated as a download rather than a page,
+        // and neuter any script even if one somehow reaches a document context.
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': 'inline',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
       },
     })
   })
