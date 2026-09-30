@@ -37,17 +37,13 @@ function transport() {
   return cached
 }
 
-/** Opens a page that asks for the password; a GET must not activate anything by itself. */
-export function verificationLink(token: string): string {
-  const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '')
-  return `${base}/verify?token=${token}`
-}
+const appUrl = (path: string) =>
+  `${(process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '')}${path}`
 
-export async function sendVerificationEmail(to: string, token: string) {
-  const link = verificationLink(token)
-
+/** Every link opens a page that POSTs; a GET must not change anything by itself. */
+async function send(to: string, subject: string, link: string, action: string, note: string) {
   if (MODE === 'console') {
-    console.log(`\n[mail:console] verification link for ${to}\n  ${link}\n`)
+    console.log(`\n[mail:console] ${subject} — ${to}\n  ${link}\n`)
     return
   }
 
@@ -56,13 +52,25 @@ export async function sendVerificationEmail(to: string, token: string) {
     // An address object, not a string: nodemailer parses a string as an address *list*, so
     // "<x@evil.com>@school.tr" would be delivered to x@evil.com.
     to: { name: '', address: to },
-    subject: 'Confirm your Prop Catalog account',
-    text: `Confirm your account by opening this link and entering the password you chose:\n\n${link}\n\nIt expires in 24 hours. If you did not request an account, ignore this email — nothing was created in your name.`,
+    subject,
+    text: `${action}:\n\n${link}\n\n${note}`,
     html: `
-      <p>Confirm your Prop &amp; Costume Catalog account by clicking below and entering the password you chose:</p>
-      <p><a href="${link}" style="background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;display:inline-block">Confirm my account</a></p>
+      <p>${action}:</p>
+      <p><a href="${link}" style="background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;display:inline-block">Open the Prop Catalog</a></p>
       <p style="color:#666;font-size:13px">Or paste this into your browser:<br>${link}</p>
-      <p style="color:#666;font-size:13px">The link expires in 24 hours. If you did not request an account, you can ignore this email — nothing was created in your name.</p>
+      <p style="color:#666;font-size:13px">${note}</p>
     `,
   })
 }
+
+export const sendVerificationEmail = (to: string, token: string) => send(to,
+  'Confirm your Prop Catalog account',
+  appUrl(`/verify?token=${token}`),
+  'Confirm your Prop Catalog account by opening this link and entering the password you chose',
+  'The link expires in 24 hours. If you did not request an account, ignore this email — nothing was created in your name.')
+
+export const sendPasswordResetEmail = (to: string, token: string) => send(to,
+  'Reset your Prop Catalog password',
+  appUrl(`/reset-password?token=${token}`),
+  'Choose a new password for your Prop Catalog account by opening this link',
+  'The link expires in 1 hour and works once. If you did not ask to reset your password, ignore this email — your password stays the same.')

@@ -1,8 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto'
 import db, { sqlTime } from './db'
-import { verifyPassword } from './auth'
+import { hashPassword, verifyPassword } from './auth'
 
 const TOKEN_HOURS = 24
+// Short, because a reset link is as good as the password for as long as it lives.
+const RESET_MINUTES = 60
 
 /** Stored as a SHA-256 hash so a leaked database cannot be used to activate accounts. */
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
@@ -46,4 +48,35 @@ export async function confirmAccount(token: string, password: string): Promise<C
   `).run(row.id, tokenHash)
 
   return info.changes === 1 ? { id: row.id } : 'invalid'
+}
+
+/** Issues a password-reset token for a confirmed account; the previous one stops working. */
+export function issueResetToken(userId: string): string {
+  const token = randomBytes(32).toString('hex')
+  const expires = sqlTime(new Date(Date.now() + RESET_MINUTES * 60_000))
+  db.prepare(`
+    UPDATE profiles SET reset_token_hash = ?, reset_expires_at = ?, updated_at = datetime('now')
+     WHERE id = ?
+  `).run(hashToken(token), expires, userId)
+  return token
+}
+
+/**
+ * Sets a new password from a reset link. Checking and spending the token is one UPDATE, so
+ * the link works exactly once. Every session is ended too: if the password was reset because
+ * someone else knew it, their session must not outlive the change.
+ */
+export async function resetPassword(token: string, password: string): Promise<boolean> {
+  const passwordHash = await hashPassword(password)
+  const row = db.prepare(`
+    UPDATE profiles
+       SET password_hash = ?, reset_token_hash = NULL, reset_expires_at = NULL,
+           updated_at = datetime('now')
+     WHERE reset_token_hash = ? AND reset_expires_at > datetime('now') AND verified_at IS NOT NULL
+    RETURNING id
+  `).get(passwordHash, hashToken(token)) as { id: string } | undefined
+
+  if (!row) return false
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.id)
+  return true
 }

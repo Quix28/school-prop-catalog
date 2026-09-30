@@ -7,6 +7,7 @@ const scrypt = promisify(_scrypt) as (pw: string, salt: Buffer, len: number) => 
 
 export const SESSION_COOKIE = 'session'
 const SESSION_DAYS = 30
+export const MIN_PASSWORD_LENGTH = 6
 
 /**
  * Cookie flags. `Secure` is env-driven because a Secure cookie is silently dropped over

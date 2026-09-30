@@ -28,6 +28,9 @@ db.exec(`
     verified_at        TEXT,
     verify_token_hash  TEXT,
     verify_expires_at  TEXT,
+    -- Set while a forgotten-password link is outstanding.
+    reset_token_hash   TEXT,
+    reset_expires_at   TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -89,6 +92,8 @@ db.transaction(() => {
     ['profiles', 'verified_at'],
     ['profiles', 'verify_token_hash'],
     ['profiles', 'verify_expires_at'],
+    ['profiles', 'reset_token_hash'],
+    ['profiles', 'reset_expires_at'],
     ['items', 'deleted_at'],
   ] as const) {
     const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])

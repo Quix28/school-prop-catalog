@@ -72,6 +72,10 @@ registers an address they don't own, the real owner can still claim it: an uncon
 registration is overwritten rather than blocking the address, and because confirming needs the
 password, the owner's click can never activate the stranger's password.
 
+**Forgot password** (`/reset-password`, linked from both sign-in pages) uses the same mail
+settings. The link expires after an hour, works once, and signs the account out everywhere.
+Only confirmed accounts get one; an unconfirmed sign-up is fixed by signing up again.
+
 ## Deploying to a Raspberry Pi 4
 
 ### 1. Build somewhere other than the Pi

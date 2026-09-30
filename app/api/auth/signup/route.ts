@@ -1,12 +1,11 @@
 import db from '@/lib/db'
-import { handler, hashPassword, newId } from '@/lib/auth'
+import { handler, hashPassword, MIN_PASSWORD_LENGTH, newId } from '@/lib/auth'
 import { clientIp, rateLimit } from '@/lib/ratelimit'
 import { mailConfigured, sendVerificationEmail } from '@/lib/mail'
 import { issueVerificationToken } from '@/lib/verification'
 
 // Enforced here, not in the browser: the form's copy of these rules can be bypassed.
 const ALLOWED_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || 'robcol.k12.tr'
-const MIN_PASSWORD_LENGTH = 6
 // A whole-string match on a plain address. An endsWith check alone accepts
 // "<x@evil.com>@school.tr", which mail libraries deliver to x@evil.com.
 const EMAIL_RE = new RegExp(`^[a-z0-9._%+-]+@${ALLOWED_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)

@@ -133,6 +133,9 @@ export default function LoginPage() {
 
         {/* Links */}
         <div className="mt-6 space-y-3 text-center">
+          <a href="/reset-password" className="block text-sm text-gray-600 hover:text-gray-900">
+            Forgot your password?
+          </a>
           <a
             href="/signup"
             className="block text-sm text-indigo-600 hover:text-indigo-700 font-medium"

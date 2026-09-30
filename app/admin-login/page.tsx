@@ -104,7 +104,10 @@ export default function AdminLoginPage() {
         </form>
 
         {/* Back link */}
-        <div className="mt-6 text-center">
+        <div className="mt-6 space-y-3 text-center">
+          <a href="/reset-password" className="block text-sm text-gray-600 hover:text-gray-900">
+            Forgot your password?
+          </a>
           <a href="/login" className="text-sm text-purple-600 hover:text-purple-700 font-medium">
             ← Back to Student Login
           </a>
