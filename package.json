@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "start": "node .next/standalone/server.js",
+    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
+    "start": "DATA_DIR=\"$PWD/data\" node --env-file=.env.local .next/standalone/server.js",
     "lint": "eslint",
-    "create-admin": "node scripts/create-admin.mjs",
+    "create-admin": "node --env-file=.env.local scripts/create-admin.mjs",
     "test-mail": "node scripts/test-mail.mjs"
   },
   "dependencies": {

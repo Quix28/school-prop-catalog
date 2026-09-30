@@ -56,6 +56,11 @@ const nextConfig: NextConfig = {
   // Ship a self-contained server so the Pi only needs the build output, not the full
   // node_modules tree. Lets you build on a faster machine and rsync the result over.
   output: "standalone",
+  // Never let secrets, the local database or the repo into that output: whatever lands in
+  // .next/standalone is copied to the Pi, over the top of its real database and .env.local.
+  outputFileTracingExcludes: {
+    "*": ["./data/**", "./.env*", "./.git/**", "./scripts/**", "./deploy/**", "./README.md"],
+  },
   // better-sqlite3 is a native .node binding — it must stay a real require() and not be
   // bundled, or the server build fails.
   serverExternalPackages: ["better-sqlite3"],

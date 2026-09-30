@@ -52,8 +52,12 @@ password SMTP in 2022. Turn on 2-Step Verification, then create one at
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=you@gmail.com
-SMTP_PASS=abcd efgh ijkl mnop      # the 16-character app password
+SMTP_PASS=abcdefghijklmnop
 ```
+
+Paste the 16-character app password **without its spaces**, and never put a `# comment` on the
+same line: systemd's `EnvironmentFile` keeps both as part of the value, so a password that
+works under `npm run dev` fails on the Pi.
 
 Two things to expect with Gmail: it **rewrites the From address** to your own account no matter
 what `SMTP_FROM` says (unless you set up a verified "Send mail as" alias), and free accounts are
@@ -61,9 +65,12 @@ capped around **500 messages a day**. The school's own relay is better if you ca
 credentials — mail from a personal Gmail asking students to click a link looks like phishing and
 is more likely to be filtered.
 
-Links expire after 24 hours and are single-use. If a student registers an address they don't
-own, the real owner can still claim it later: an unconfirmed registration is overwritten rather
-than blocking the address, so nobody can squat a classmate's email.
+Links expire after 24 hours and are single-use. The link opens a page that asks for the password
+chosen at sign-up, and only that activates the account — opening the link alone does nothing, so
+mail scanners (Microsoft Safe Links) that open every link cannot use it up. If a student
+registers an address they don't own, the real owner can still claim it: an unconfirmed
+registration is overwritten rather than blocking the address, and because confirming needs the
+password, the owner's click can never activate the stranger's password.
 
 ## Deploying to a Raspberry Pi 4
 
@@ -73,12 +80,18 @@ than blocking the address, so nobody can squat a classmate's email.
 OOM reaper on a 4 GB Pi.** Build on your laptop and copy the result:
 
 ```sh
-npm ci && npm run build
-rsync -a .next/standalone/ .next/static pi@raspberrypi:/srv/prop-catalog/
-rsync -a public/ pi@raspberrypi:/srv/prop-catalog/public/
+npm ci && npm run build        # also copies .next/static and public/ into the standalone folder
+rsync -a --exclude data/ --exclude '.env*' --exclude node_modules/better-sqlite3/ \
+  .next/standalone/ pi@raspberrypi:/srv/prop-catalog/
+rsync -a scripts deploy .env.example pi@raspberrypi:/srv/prop-catalog/
 ```
 
 The `standalone` output bundles its own minimal `node_modules`, so the Pi never runs `npm ci`.
+
+The excludes are what make a redeploy safe: without them rsync would overwrite the Pi's live
+database, its `.env.local` and the Linux build of `better-sqlite3` (step 2) with your laptop's
+copies. The build is also configured never to put those into `.next/standalone` in the first
+place — check with `ls -a .next/standalone`, which should show no `data` and no `.env.local`.
 
 If you would rather build on the Pi anyway, add swap first and expect ~15 minutes:
 
@@ -125,11 +138,29 @@ sudo chown pi:pi /srv/prop-catalog/data
 ### 4. Configure and start
 
 ```sh
-cp .env.example .env.local     # set DATA_DIR, ALLOWED_EMAIL_DOMAIN, COOKIE_SECURE
-node scripts/create-admin.mjs
-sudo cp deploy/prop-catalog.service /etc/systemd/system/
+cd /srv/prop-catalog
+cp .env.example .env.local
+nano .env.local                # see the list below
+node scripts/test-mail.mjs you@example.com
+node --env-file=.env.local scripts/create-admin.mjs
+sudo cp deploy/prop-catalog.service /etc/systemd/system/   # check User= first
 sudo systemctl daemon-reload && sudo systemctl enable --now prop-catalog
 ```
+
+In `.env.local`, set:
+
+- `DATA_DIR`: the SSD path from step 3. If it is not `/srv/prop-catalog/data`, add it to
+  `ReadWritePaths` in the service file.
+- `ALLOWED_EMAIL_DOMAIN`: your school's domain.
+- `APP_URL`: the public `https://` address. Confirmation links are built from it.
+- `MAIL_TRANSPORT`: delete the line. `console` is refused in production.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`: see *Email confirmation*.
+- `ADMIN_PROMOTE_CODE`: a long random string (`openssl rand -hex 16`). Role changes stay
+  disabled without it.
+- `COOKIE_SECURE`, `TRUST_PROXY`: both `true` once step 5 is done.
+
+`create-admin.mjs` needs `--env-file`: without it `DATA_DIR` is ignored and the admin is written
+to a different database from the one the server uses.
 
 ### 5. Serve it over HTTPS
 
@@ -142,9 +173,11 @@ catalog.yourschool.tr {
 }
 ```
 
-Then set `COOKIE_SECURE=true` in `.env.local` and restart. Leave it `false` while you are on
-plain HTTP, or login will appear to succeed and then immediately log you out — a `Secure`
-cookie is silently discarded over `http://`.
+Then set `COOKIE_SECURE=true` and `TRUST_PROXY=true` in `.env.local` and restart. Leave
+`COOKIE_SECURE` `false` while you are on plain HTTP, or login will appear to succeed and then
+immediately log you out — a `Secure` cookie is silently discarded over `http://`. Without
+`TRUST_PROXY`, every visitor looks like the same client to the rate limiter, so one busy
+classroom can lock everyone else out of logging in.
 
 > Exposing a Pi on a school network to the public internet is a real risk you are taking on.
 > Sessions are httpOnly cookies, login and signup are rate limited, uploads are type- and
@@ -179,9 +212,9 @@ Authorisation lives in the API routes. The role checks in the pages only decide 
 redirect; every admin route re-checks the session's role independently, so a student cannot
 reach admin functions by calling the API directly.
 
-## Known gap
+## Availability
 
-`quantity_available` is set equal to `quantity_total` when an item is created and is never
-decremented as reservations are approved. This is carried over from the original version and
-is not yet wired up — approving two overlapping reservations for the same single item will not
-warn you.
+Nothing stores a running count. A reservation holds its units for its own dates, from the moment
+it is requested until it is rejected, cancelled or returned; an overdue checkout keeps holding
+until it is marked returned. A request is refused if the units held on the dates it asks for
+leave too few free. The catalog's "available today" badge uses the same rule for today only.

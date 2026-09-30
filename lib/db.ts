@@ -4,8 +4,10 @@ import { join } from 'node:path'
 
 // Keep the database off the SD card if you can — point DATA_DIR at a USB SSD.
 // SD cards wear out under write load and a Pi's rootfs is the worst place for a DB.
-export const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
-export const UPLOAD_DIR = join(DATA_DIR, 'uploads')
+// turbopackIgnore: a cwd-based path makes the build tracer copy the entire project (.env.local,
+// .git, this database) into .next/standalone, which the deploy then ships to the Pi.
+export const DATA_DIR = process.env.DATA_DIR || join(/* turbopackIgnore: true */ process.cwd(), 'data')
+export const UPLOAD_DIR = join(/* turbopackIgnore: true */ DATA_DIR, 'uploads')
 
 mkdirSync(UPLOAD_DIR, { recursive: true })
 
