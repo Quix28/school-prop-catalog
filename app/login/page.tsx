@@ -4,7 +4,7 @@
 'use client'
 
 import { useState } from 'react'
-import { api } from '@/lib/client'
+import { api, ApiError, errorMessage } from '@/lib/client'
 import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
@@ -13,6 +13,8 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [unverified, setUnverified] = useState(false)
+  const [resendMsg, setResendMsg] = useState('')
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -20,6 +22,8 @@ export default function LoginPage() {
     try {
       setLoading(true)
       setError('')
+      setUnverified(false)
+      setResendMsg('')
 
       // api.post throws with the server's message on a non-2xx, so no error flag to check.
       await api.post('/api/auth/login', { email, password })
@@ -27,9 +31,20 @@ export default function LoginPage() {
       // Success - redirect to catalog
       router.push('/catalog')
       
-    } catch (error: any) {
-      setError(error.message || 'Failed to sign in')
+    } catch (error) {
+      setError(errorMessage(error) || 'Failed to sign in')
+      // The only way to get a new link otherwise is the page the old link opens.
+      setUnverified(error instanceof ApiError && error.data?.unverified === true)
       setLoading(false)
+    }
+  }
+
+  const resend = async () => {
+    try {
+      const r = await api.post<{ message: string }>('/api/auth/resend', { email })
+      setResendMsg(r.message)
+    } catch (e) {
+      setResendMsg(errorMessage(e))
     }
   }
 
@@ -55,6 +70,13 @@ export default function LoginPage() {
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-sm text-red-600">{error}</p>
+            {unverified && (
+              <button type="button" onClick={resend}
+                className="mt-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium">
+                Send a new confirmation link
+              </button>
+            )}
+            {resendMsg && <p className="mt-2 text-sm text-gray-600">{resendMsg}</p>}
           </div>
         )}
 
@@ -115,7 +137,7 @@ export default function LoginPage() {
             href="/signup"
             className="block text-sm text-indigo-600 hover:text-indigo-700 font-medium"
           >
-            Don't have an account? Sign up
+            Don&apos;t have an account? Sign up
           </a>
           
           <div className="pt-4 border-t border-gray-200">

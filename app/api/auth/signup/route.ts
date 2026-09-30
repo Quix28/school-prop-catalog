@@ -7,15 +7,16 @@ import { issueVerificationToken } from '@/lib/verification'
 // Enforced here, not in the browser: the form's copy of these rules can be bypassed.
 const ALLOWED_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || 'robcol.k12.tr'
 const MIN_PASSWORD_LENGTH = 6
+// A whole-string match on a plain address. An endsWith check alone accepts
+// "<x@evil.com>@school.tr", which mail libraries deliver to x@evil.com.
+const EMAIL_RE = new RegExp(`^[a-z0-9._%+-]+@${ALLOWED_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
+
+const tooMany = (retryAfterSeconds: number) =>
+  Response.json({ error: 'Too many sign-up attempts. Try again later.' },
+    { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } })
 
 export function POST(req: Request) {
   return handler(async () => {
-    const limited = rateLimit(`signup:${clientIp(req)}`, 5, 60 * 60_000)
-    if (!limited.ok) {
-      return Response.json({ error: 'Too many sign-up attempts. Try again later.' },
-        { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } })
-    }
-
     // Refuse rather than create accounts nobody can ever confirm.
     if (!mailConfigured()) {
       return Response.json(
@@ -29,7 +30,7 @@ export function POST(req: Request) {
     }
 
     const normalized = email.trim().toLowerCase()
-    if (!normalized.endsWith(`@${ALLOWED_DOMAIN}`)) {
+    if (!EMAIL_RE.test(normalized)) {
       return Response.json({ error: `Only @${ALLOWED_DOMAIN} email addresses can register` },
         { status: 403 })
     }
@@ -37,6 +38,14 @@ export function POST(req: Request) {
       return Response.json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` },
         { status: 400 })
     }
+
+    // Counted only once the request is valid, so typos don't use up anyone's quota. The
+    // per-address limit stops inbox flooding; the per-IP one is loose because a whole class
+    // registers from the same school network (or the same 'unknown' without TRUST_PROXY).
+    const perEmail = rateLimit(`signup:${normalized}`, 3, 15 * 60_000)
+    if (!perEmail.ok) return tooMany(perEmail.retryAfterSeconds)
+    const perIp = rateLimit(`signup-ip:${clientIp(req)}`, 60, 60 * 60_000)
+    if (!perIp.ok) return tooMany(perIp.retryAfterSeconds)
 
     const existing = db.prepare(
       'SELECT id, verified_at FROM profiles WHERE email = ?'
@@ -49,7 +58,8 @@ export function POST(req: Request) {
     } else if (existing) {
       // The address was registered but never confirmed, so nobody has proven they own it.
       // Overwrite it instead of returning 409: otherwise anyone could permanently block a
-      // classmate from signing up just by submitting their address first.
+      // classmate from signing up just by submitting their address first. Confirming needs
+      // this password too, so an overwrite by a stranger cannot be activated by the owner.
       db.prepare(`
         UPDATE profiles SET password_hash = ?, full_name = ?, updated_at = datetime('now')
          WHERE id = ?

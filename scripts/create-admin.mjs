@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Creates (or promotes) an admin account. Run once after first deploy:
-//   node scripts/create-admin.mjs
+//   node --env-file=.env.local scripts/create-admin.mjs
+// --env-file matters: without it DATA_DIR is ignored and the admin lands in a different
+// database from the one the server reads.
 // Password is prompted, never passed as an argument — argv shows up in `ps` and shell history.
 
 import { createInterface } from 'node:readline/promises'
@@ -51,7 +53,7 @@ if (process.stdin.isTTY) {
 }
 
 const email = (await ask('Admin email: ')).toLowerCase()
-if (!email.includes('@')) { console.error('\nThat does not look like an email address.'); process.exit(1) }
+if (!/^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(email)) { console.error('\nThat does not look like an email address.'); process.exit(1) }
 
 const fullName = await ask('\nFull name (optional): ')
 const password = await ask('\nPassword (min 6 chars): ')

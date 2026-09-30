@@ -12,7 +12,15 @@ import nodemailer from 'nodemailer'
 const MODE = process.env.MAIL_TRANSPORT || 'smtp'
 
 export function mailConfigured(): boolean {
-  if (MODE === 'console') return true
+  if (MODE === 'console') {
+    // .env.example ships console mode for local work. Left on in production, every
+    // confirmation link would go to the server log and nobody could ever sign up.
+    if (process.env.NODE_ENV === 'production') {
+      console.error('MAIL_TRANSPORT=console is not allowed in production; configure SMTP.')
+      return false
+    }
+    return true
+  }
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
 }
 
@@ -29,9 +37,10 @@ function transport() {
   return cached
 }
 
+/** Opens a page that asks for the password; a GET must not activate anything by itself. */
 export function verificationLink(token: string): string {
   const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '')
-  return `${base}/api/auth/verify?token=${token}`
+  return `${base}/verify?token=${token}`
 }
 
 export async function sendVerificationEmail(to: string, token: string) {
@@ -44,11 +53,13 @@ export async function sendVerificationEmail(to: string, token: string) {
 
   await transport().sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to,
+    // An address object, not a string: nodemailer parses a string as an address *list*, so
+    // "<x@evil.com>@school.tr" would be delivered to x@evil.com.
+    to: { name: '', address: to },
     subject: 'Confirm your Prop Catalog account',
-    text: `Confirm your account by opening this link:\n\n${link}\n\nIt expires in 24 hours. If you did not request an account, ignore this email — nothing was created in your name.`,
+    text: `Confirm your account by opening this link and entering the password you chose:\n\n${link}\n\nIt expires in 24 hours. If you did not request an account, ignore this email — nothing was created in your name.`,
     html: `
-      <p>Confirm your Prop &amp; Costume Catalog account by clicking below:</p>
+      <p>Confirm your Prop &amp; Costume Catalog account by clicking below and entering the password you chose:</p>
       <p><a href="${link}" style="background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;display:inline-block">Confirm my account</a></p>
       <p style="color:#666;font-size:13px">Or paste this into your browser:<br>${link}</p>
       <p style="color:#666;font-size:13px">The link expires in 24 hours. If you did not request an account, you can ignore this email — nothing was created in your name.</p>

@@ -1,5 +1,5 @@
 /**
- * Minimal fixed-window rate limiter for the login endpoint.
+ * Minimal fixed-window rate limiter for the auth endpoints.
  *
  * ponytail: in-memory Map, so counters reset when the process restarts and are per-process.
  * That is fine for one Next server on one Pi. If this ever runs behind multiple workers or
@@ -27,7 +27,7 @@ export function rateLimit(key: string, limit = 8, windowMs = 10 * 60_000): RateL
   return { ok: true }
 }
 
-/** Called after a successful login so one good attempt clears the failure count. */
+/** Called after a success so only failed attempts count toward the limit. */
 export function resetLimit(key: string) {
   buckets.delete(key)
 }
@@ -38,11 +38,14 @@ export function resetLimit(key: string) {
  * the limiter entirely. So we only read those headers when TRUST_PROXY=true (set it once a
  * reverse proxy like Caddy/nginx terminates in front). Otherwise every direct client keys to
  * the same 'unknown', which combined with the per-email key still throttles password guessing.
+ *
+ * The rightmost X-Forwarded-For entry is the one our own proxy appended; anything to its left
+ * was sent by the client and can be forged.
  */
 export function clientIp(req: Request): string {
   if (process.env.TRUST_PROXY === 'true') {
     const fwd = req.headers.get('x-forwarded-for')
-    if (fwd) return fwd.split(',')[0].trim()
+    if (fwd) return fwd.split(',').at(-1)!.trim()
     const real = req.headers.get('x-real-ip')
     if (real) return real
   }

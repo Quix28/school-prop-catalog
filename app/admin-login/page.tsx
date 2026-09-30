@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { api } from '@/lib/client'
+import { api, errorMessage } from '@/lib/client'
 import { useRouter } from 'next/navigation'
 
 export default function AdminLoginPage() {
@@ -28,8 +28,8 @@ export default function AdminLoginPage() {
 
       router.push('/admin')
 
-    } catch (error: any) {
-      setError(error.message || 'Failed to sign in')
+    } catch (error) {
+      setError(errorMessage(error) || 'Failed to sign in')
       setLoading(false)
     }
   }

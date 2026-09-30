@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import db from '@/lib/db'
 import { handler, requireAdmin } from '@/lib/auth'
-import { clientIp, rateLimit } from '@/lib/ratelimit'
+import { clientIp, rateLimit, resetLimit } from '@/lib/ratelimit'
 
 /**
  * Changing someone's role needs an admin session *and* a separate confirmation code, so a
@@ -30,8 +30,10 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
     }
 
     // A 4-digit code is guessable in a few thousand tries, so throttle attempts even though
-    // the caller is already an authenticated admin.
-    const limited = rateLimit(`promote:${clientIp(req)}:${admin.id}`, 5, 10 * 60_000)
+    // the caller is already an authenticated admin. Reset on a correct code, so only wrong
+    // codes count and an admin sorting out several roles is never locked out.
+    const limitKey = `promote:${clientIp(req)}:${admin.id}`
+    const limited = rateLimit(limitKey, 5, 10 * 60_000)
     if (!limited.ok) {
       return Response.json({ error: 'Too many incorrect codes. Try again later.' },
         { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } })
@@ -45,6 +47,7 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
     if (!codeMatches(code)) {
       return Response.json({ error: 'Incorrect confirmation code' }, { status: 403 })
     }
+    resetLimit(limitKey)
 
     const target = db.prepare('SELECT id, email, role FROM profiles WHERE id = ?').get(id) as
       { id: string; email: string; role: string } | undefined

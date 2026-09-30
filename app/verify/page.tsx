@@ -2,14 +2,38 @@
 
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { api } from '@/lib/client'
+import { api, ApiError, errorMessage } from '@/lib/client'
 
+/**
+ * The emailed link lands here. Activation is a POST with the sign-up password, never the page
+ * load itself: mail scanners open links on their own, and without the password an address
+ * someone else registered could be activated with that stranger's password.
+ */
 function VerifyResult() {
   const router = useRouter()
-  const status = useSearchParams().get('status')
+  const token = useSearchParams().get('token') || ''
+  const [state, setState] = useState<'confirm' | 'ok' | 'invalid'>(token ? 'confirm' : 'invalid')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [confirming, setConfirming] = useState(false)
   const [email, setEmail] = useState('')
   const [msg, setMsg] = useState('')
   const [sending, setSending] = useState(false)
+
+  const confirmAccount = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setConfirming(true)
+    setError('')
+    try {
+      await api.post('/api/auth/verify', { token, password })
+      setState('ok')
+    } catch (e) {
+      if (e instanceof ApiError && e.data?.invalid) setState('invalid')
+      else setError(errorMessage(e))
+    } finally {
+      setConfirming(false)
+    }
+  }
 
   const resend = async () => {
     setSending(true)
@@ -17,14 +41,14 @@ function VerifyResult() {
     try {
       const r = await api.post<{ message: string }>('/api/auth/resend', { email })
       setMsg(r.message)
-    } catch (e: any) {
-      setMsg(e.message)
+    } catch (e) {
+      setMsg(errorMessage(e))
     } finally {
       setSending(false)
     }
   }
 
-  if (status === 'ok') {
+  if (state === 'ok') {
     return (
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
         <p className="text-5xl mb-4">✅</p>
@@ -40,13 +64,49 @@ function VerifyResult() {
     )
   }
 
+  if (state === 'confirm') {
+    return (
+      <form onSubmit={confirmAccount} className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <p className="text-5xl mb-4 text-center">✉️</p>
+        <h1 className="text-xl font-bold text-gray-900 mb-2 text-center">Confirm your account</h1>
+        <p className="text-gray-500 text-sm mb-6 text-center">
+          Enter the password you chose when you signed up.
+        </p>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+            {error} <a href="/signup" className="underline">Sign up again</a>
+          </div>
+        )}
+
+        <input
+          type="password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          required
+          autoFocus
+          placeholder="••••••••"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-3 focus:ring-2 focus:ring-indigo-500"
+        />
+        <button
+          type="submit"
+          disabled={!password || confirming}
+          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-3 rounded-lg font-medium"
+        >
+          {confirming ? 'Confirming…' : 'Confirm my account'}
+        </button>
+      </form>
+    )
+  }
+
   return (
     <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
       <p className="text-5xl mb-4 text-center">⏳</p>
       <h1 className="text-xl font-bold text-gray-900 mb-2 text-center">Link not valid</h1>
       <p className="text-gray-500 text-sm mb-6 text-center">
-        Confirmation links expire after 24 hours and can only be used once. Enter your address
-        and we&apos;ll send a fresh one.
+        Confirmation links expire after 24 hours, can only be used once, and stop working when a
+        newer one is sent. Enter your address and we&apos;ll send a fresh one. Already confirmed?{' '}
+        <a href="/login" className="text-indigo-600 hover:underline">Sign in</a>.
       </p>
 
       <input

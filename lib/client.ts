@@ -1,6 +1,13 @@
 // Thin fetch wrapper so pages read almost like the old Supabase calls.
 // Throws on non-2xx with the server's message, which the pages already surface to the user.
 
+/** Thrown for a non-2xx reply; `data` keeps the rest of the body (e.g. `unverified`). */
+export class ApiError extends Error {
+  constructor(message: string, readonly data: Record<string, unknown> | null) {
+    super(message)
+  }
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -9,7 +16,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       : { 'Content-Type': 'application/json', ...(init?.headers || {}) },
   })
   const data = await res.json().catch(() => null)
-  if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
+  if (!res.ok) throw new ApiError(data?.error || `Request failed (${res.status})`, data)
   return data as T
 }
 
@@ -26,6 +33,9 @@ export const api = {
     return request<T>(url, { method: 'POST', body: form })
   },
 }
+
+/** Message of anything caught, for display. */
+export const errorMessage = (e: unknown) => e instanceof Error ? e.message : String(e)
 
 export type SessionUser = {
   id: string

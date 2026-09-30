@@ -108,4 +108,7 @@ db.prepare(`
      AND verify_expires_at < datetime('now','-7 days')
 `).run()
 
+/** A Date in SQLite's datetime('now') format, so text comparisons against it are correct. */
+export const sqlTime = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ')
+
 export default db

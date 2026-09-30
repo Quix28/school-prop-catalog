@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, scrypt as _scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 import { cookies } from 'next/headers'
-import db from './db'
+import db, { sqlTime } from './db'
 
 const scrypt = promisify(_scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>
 
@@ -49,7 +49,7 @@ export function createSession(userId: string): { token: string; expires: Date } 
   const token = randomBytes(32).toString('hex')
   const expires = new Date(Date.now() + SESSION_DAYS * 86_400_000)
   db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)')
-    .run(token, userId, expires.toISOString())
+    .run(token, userId, sqlTime(expires))
   return { token, expires }
 }
 

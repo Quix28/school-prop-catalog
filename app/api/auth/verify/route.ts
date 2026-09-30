@@ -1,24 +1,42 @@
 import { cookies } from 'next/headers'
-import { createSession, SESSION_COOKIE, sessionCookieOptions } from '@/lib/auth'
-import { consumeVerificationToken } from '@/lib/verification'
+import { createSession, handler, SESSION_COOKIE, sessionCookieOptions } from '@/lib/auth'
+import { rateLimit } from '@/lib/ratelimit'
+import { confirmAccount, hashToken } from '@/lib/verification'
 
 /**
- * Opened from the confirmation email, so it must be a plain GET that works in any mail
- * client. Redirects to a page rather than returning JSON.
+ * POSTed by the /verify page the emailed link opens. Not a GET: mail scanners such as
+ * Microsoft Safe Links open every link in a message, and a GET that activated the account
+ * would spend the single-use token (and hand the session to the scanner).
  */
-export async function GET(req: Request) {
-  const base = (process.env.APP_URL || new URL(req.url).origin).replace(/\/$/, '')
-  const token = new URL(req.url).searchParams.get('token') || ''
+export function POST(req: Request) {
+  return handler(async () => {
+    const { token, password } = await req.json().catch(() => ({}))
+    if (typeof token !== 'string' || !token || typeof password !== 'string') {
+      return Response.json({ error: 'Token and password are required' }, { status: 400 })
+    }
 
-  const profile = token ? consumeVerificationToken(token) : null
-  if (!profile) {
-    // Expired, already used, or forged — all the same to the visitor.
-    return Response.redirect(`${base}/verify?status=invalid`, 303)
-  }
+    // Keyed on the token: guessing the password needs the link, and the link is one inbox.
+    const limited = rateLimit(`verify:${hashToken(token)}`)
+    if (!limited.ok) {
+      return Response.json({ error: 'Too many attempts. Try again later.' },
+        { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } })
+    }
 
-  // Confirming proves inbox access, so signing them in here is safe and saves a step.
-  const { token: sessionToken, expires } = createSession(profile.id)
-  ;(await cookies()).set(SESSION_COOKIE, sessionToken, sessionCookieOptions(expires))
+    const result = await confirmAccount(token, password)
+    if (result === 'invalid') {
+      // Expired, already used, replaced by a newer link, or forged — all the same to the visitor.
+      return Response.json({ error: 'This link is no longer valid.', invalid: true }, { status: 410 })
+    }
+    if (result === 'wrong_password') {
+      return Response.json({
+        error: 'That is not the password this account was created with. If you did not sign up '
+          + 'with this address yourself, sign up again to replace that registration.',
+      }, { status: 401 })
+    }
 
-  return Response.redirect(`${base}/verify?status=ok`, 303)
+    // Token plus password proves both inbox access and account ownership, so sign them in.
+    const { token: sessionToken, expires } = createSession(result.id)
+    ;(await cookies()).set(SESSION_COOKIE, sessionToken, sessionCookieOptions(expires))
+    return Response.json({ ok: true })
+  })
 }

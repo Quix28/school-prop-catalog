@@ -4,7 +4,7 @@
 'use client'
 
 import { useState } from 'react'
-import { api } from '@/lib/client'
+import { api, errorMessage } from '@/lib/client'
 
 export default function SignupPage() {
   const [loading, setLoading] = useState(false)
@@ -34,13 +34,9 @@ export default function SignupPage() {
       if (formData.password.length < 6) {
         throw new Error('Password must be at least 6 characters')
       }
-            const allowedDomain = 'robcol.k12.tr'
-            if (!formData.email.toLowerCase().endsWith(`@${allowedDomain}`)) {
-            throw new Error(`Only @${allowedDomain} email addresses can register`)
-            }
 
-      // These same rules are enforced server-side in /api/auth/signup; the checks above are
-      // only for fast feedback and can be bypassed, which is why the server repeats them.
+      // The allowed email domain is checked only by the server, which reads it from
+      // ALLOWED_EMAIL_DOMAIN — a copy here would silently disagree once that is changed.
       await api.post('/api/auth/signup', {
         email: formData.email,
         password: formData.password,
@@ -51,8 +47,8 @@ export default function SignupPage() {
       setSuccess(true)
       setLoading(false)
       
-    } catch (error: any) {
-      setError(error.message || 'Failed to create account')
+    } catch (error) {
+      setError(errorMessage(error) || 'Failed to create account')
       setLoading(false)
     }
   }
@@ -87,7 +83,7 @@ export default function SignupPage() {
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm text-green-600">
               ✓ Almost there — open the confirmation link we just emailed to{' '}
-              <strong>{formData.email}</strong> to activate your account.
+              <strong>{formData.email}</strong> and enter this password to activate your account.
             </p>
           </div>
         )}
@@ -171,7 +167,7 @@ export default function SignupPage() {
                 Creating account...
               </div>
             ) : success ? (
-              'Success! Redirecting...'
+              'Check your email'
             ) : (
               'Create Account'
             )}
