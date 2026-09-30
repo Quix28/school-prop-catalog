@@ -1,11 +1,8 @@
-import db from '@/lib/db'
+import db, { HOLDS_DURING, today } from '@/lib/db'
 import { handler, newId, requireAdmin, requireUser } from '@/lib/auth'
 import type { Item } from '@/lib/types'
 
 type ItemRow = Omit<Item, 'additional_images'> & { additional_images: string | null; held: number }
-
-/** Reservation statuses that hold a unit out of circulation until they end or are cancelled. */
-export const HELD_STATUSES = ['pending', 'approved', 'checked_out'] as const
 
 /** additional_images was a Postgres text[]; in SQLite it is a JSON string. */
 function toItem(row: ItemRow): Item {
@@ -13,7 +10,8 @@ function toItem(row: ItemRow): Item {
   return {
     ...rest,
     // Availability is derived, not stored: the stored column drifted because nothing ever
-    // decremented it. total minus units currently held is always correct by construction.
+    // decremented it. Total minus units held *today*; a booking for next month must not show
+    // the item as gone now. Whether a chosen date range is free is decided when reserving.
     quantity_available: Math.max(0, row.quantity_total - held),
     additional_images: row.additional_images ? JSON.parse(row.additional_images) : null,
   }
@@ -22,14 +20,15 @@ function toItem(row: ItemRow): Item {
 export function GET() {
   return handler(async () => {
     await requireUser()
+    const now = today()
     const rows = db.prepare(`
       SELECT i.*,
              COALESCE((SELECT SUM(r.quantity) FROM reservations r
-                        WHERE r.item_id = i.id
-                          AND r.status IN ('pending','approved','checked_out')), 0) AS held
+                        WHERE r.item_id = i.id AND ${HOLDS_DURING}), 0) AS held
         FROM items i
+       WHERE i.deleted_at IS NULL
        ORDER BY i.name
-    `).all() as ItemRow[]
+    `).all({ start: now, end: now, today: now }) as ItemRow[]
     return Response.json({ items: rows.map(toItem) })
   })
 }

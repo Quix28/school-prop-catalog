@@ -44,7 +44,9 @@ db.exec(`
     notes              TEXT,
     created_at         TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
-    created_by         TEXT REFERENCES profiles(id) ON DELETE SET NULL
+    created_by         TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    -- Soft delete: a hard delete would cascade away the reservation history of the item.
+    deleted_at         TEXT
   );
 
   CREATE TABLE IF NOT EXISTS reservations (
@@ -76,26 +78,28 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_items_name ON items(name);
 `)
 
-// --- migrations for databases created before email verification existed ---
-// SQLite has no ADD COLUMN IF NOT EXISTS, so check the table shape first.
-{
-  const columns = new Set(
-    (db.prepare(`PRAGMA table_info(profiles)`).all() as { name: string }[]).map(c => c.name)
-  )
-  for (const [col, decl] of [
-    ['verified_at', 'TEXT'],
-    ['verify_token_hash', 'TEXT'],
-    ['verify_expires_at', 'TEXT'],
+// --- migrations for databases created before a column existed ---
+// SQLite has no ADD COLUMN IF NOT EXISTS, so check the table shape first. IMMEDIATE takes the
+// write lock before that check: `next build` loads this module in several processes at once,
+// and two of them both adding the column would crash the second.
+db.transaction(() => {
+  for (const [table, col] of [
+    ['profiles', 'verified_at'],
+    ['profiles', 'verify_token_hash'],
+    ['profiles', 'verify_expires_at'],
+    ['items', 'deleted_at'],
   ] as const) {
-    if (!columns.has(col)) db.exec(`ALTER TABLE profiles ADD COLUMN ${col} ${decl}`)
+    const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
+    if (!columns.some(c => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} TEXT`)
   }
-  // Accounts that predate verification are grandfathered in, otherwise the existing admin
-  // would be locked out by an upgrade. Only rows with no pending token qualify.
-  db.exec(`
-    UPDATE profiles SET verified_at = created_at
-     WHERE verified_at IS NULL AND verify_token_hash IS NULL
-  `)
-}
+}).immediate()
+
+// Accounts that predate verification are grandfathered in, otherwise the existing admin
+// would be locked out by an upgrade. Only rows with no pending token qualify.
+db.exec(`
+  UPDATE profiles SET verified_at = created_at
+   WHERE verified_at IS NULL AND verify_token_hash IS NULL
+`)
 
 // Expired sessions are dead weight; clearing them at startup is enough at this scale.
 db.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run()
@@ -124,7 +128,22 @@ if (process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-p
   }
 }
 
+/** Today in the server's timezone, as the YYYY-MM-DD string reservations are stored in. */
+export const today = () =>
+  new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
+
 /** A Date in SQLite's datetime('now') format, so text comparisons against it are correct. */
 export const sqlTime = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ')
+
+/**
+ * SQL condition: reservation `r` holds units at some point in [@start, @end] (inclusive dates).
+ * A checked-out item past its end date is overdue but still physically out, so it keeps
+ * holding through today until an admin marks it returned.
+ */
+export const HOLDS_DURING = `
+  r.status IN ('pending','approved','checked_out')
+  AND r.start_date <= @end
+  AND (CASE WHEN r.status = 'checked_out' THEN max(r.end_date, @today) ELSE r.end_date END) >= @start
+`
 
 export default db

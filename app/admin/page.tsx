@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { api, getCurrentUser, signOut } from '@/lib/client'
+import { api, errorMessage, fromSqlTime, getCurrentUser, signOut } from '@/lib/client'
 import { useLiveData } from '@/lib/useLiveData'
 import type { Item, Reservation } from '@/lib/types'
 import { useRouter } from 'next/navigation'
@@ -36,6 +36,7 @@ export default function AdminPage() {
   const [userMsg, setUserMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
+  const [loadError, setLoadError] = useState('')
   const [newItem, setNewItem] = useState({
   name: '',
   description: '',
@@ -46,8 +47,28 @@ export default function AdminPage() {
   image_url: ''
 })
 
-  // Reloads on focus too — a second admin approving something should show up here.
-  useLiveData(() => checkAdminAndLoad())
+  const loadData = async () => {
+    // A failed load must not leave the spinner up forever; the focus reload retries it.
+    try {
+      // The API joins items and profiles server-side, so the separate profile lookup is gone.
+      const [{ items: itemsData }, { reservations: resData }, { users: usersData }] = await Promise.all([
+        api.get<{ items: Item[] }>('/api/items'),
+        api.get<{ reservations: ReservationWithDetails[] }>('/api/reservations'),
+        api.get<{ users: UserRow[] }>('/api/users'),
+      ])
+      setUsers(usersData || [])
+
+      setItems(itemsData || [])
+      setReservations((resData || []).map(r => ({
+        ...r,
+        item_name: r.item_name || 'Unknown',
+        user_email: r.user_email || r.user_id?.slice(0, 8),
+      })))
+      setLoadError('')
+    } catch (e) {
+      setLoadError(errorMessage(e))
+    }
+  }
 
   const checkAdminAndLoad = async () => {
     const user = await getCurrentUser()
@@ -60,30 +81,18 @@ export default function AdminPage() {
     setLoading(false)
   }
 
-  const loadData = async () => {
-    // The API joins items and profiles server-side, so the separate profile lookup is gone.
-    const [{ items: itemsData }, { reservations: resData }, { users: usersData }] = await Promise.all([
-      api.get<{ items: Item[] }>('/api/items'),
-      api.get<{ reservations: ReservationWithDetails[] }>('/api/reservations'),
-      api.get<{ users: UserRow[] }>('/api/users'),
-    ])
-    setUsers(usersData || [])
+  // Reloads on focus too — a second admin approving something should show up here.
+  useLiveData(() => checkAdminAndLoad())
 
-    setItems(itemsData || [])
-    setReservations((resData || []).map(r => ({
-      ...r,
-      item_name: r.item_name || 'Unknown',
-      user_email: r.user_email || r.user_id?.slice(0, 8),
-    })))
-  }
-
-  const updateReservationStatus = async (id: string, status: string) => {
+  const updateReservationStatus = async (id: string, status: Reservation['status']) => {
     try {
       // reviewed_at / reviewed_by are stamped server-side from the session.
       await api.patch(`/api/reservations/${id}`, { status })
-      setReservations(prev => prev.map(r => r.id === id ? { ...r, status: status as any } : r))
-    } catch (e: any) {
-      alert(e.message)
+      setReservations(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+    } catch (e) {
+      // Usually a 409: someone else changed it first. Show the real state instead of ours.
+      alert(errorMessage(e))
+      await loadData()
     }
   }
 
@@ -95,8 +104,8 @@ export default function AdminPage() {
       // The server validates the type, caps the size and names the file.
       const { url } = await api.upload<{ url: string }>('/api/upload', file)
       setNewItem(prev => ({ ...prev, image_url: url }))
-    } catch (e: any) {
-      alert('Image upload failed: ' + e.message)
+    } catch (e) {
+      alert('Image upload failed: ' + errorMessage(e))
     } finally {
       setUploading(false)
     }
@@ -111,7 +120,7 @@ export default function AdminPage() {
       await api.post('/api/items', {
         name, description, category, subcategory, notes, image_url, quantity_total,
       })
-    } catch (e: any) { alert(e.message); return }
+    } catch (e) { alert(errorMessage(e)); return }
     setSaveMsg('Item added successfully!')
     setNewItem({ name: '', description: '', category: 'prop', subcategory: '', quantity_total: 1, notes: '', image_url: '' })
     await loadData()
@@ -119,11 +128,11 @@ export default function AdminPage() {
   }
 
   const handleDeleteItem = async (id: string) => {
-    if (!confirm('Delete this item?')) return
+    if (!confirm('Delete this item? It leaves the catalog; past reservations keep their history.')) return
     try {
       await api.del(`/api/items/${id}`)
       setItems(prev => prev.filter(i => i.id !== id))
-    } catch (e: any) { alert(e.message) }
+    } catch (e) { alert(errorMessage(e)) }
   }
 
   const changeRole = async (u: UserRow, role: 'admin' | 'student') => {
@@ -134,8 +143,8 @@ export default function AdminPage() {
       await api.patch(`/api/users/${u.id}`, { role, code: promoteCode })
       setUsers(prev => prev.map(x => x.id === u.id ? { ...x, role } : x))
       setUserMsg({ text: `${u.email} is now ${role === 'admin' ? 'an admin' : 'a student'}.`, ok: true })
-    } catch (e: any) {
-      setUserMsg({ text: e.message, ok: false })
+    } catch (e) {
+      setUserMsg({ text: errorMessage(e), ok: false })
     }
   }
 
@@ -205,7 +214,7 @@ export default function AdminPage() {
         ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id as typeof activeTab)}
             className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.id
                 ? 'border-purple-600 text-purple-600'
@@ -218,13 +227,18 @@ export default function AdminPage() {
       </div>
 
       <div className="p-6 max-w-6xl mx-auto">
+        {loadError && (
+          <div className="mb-5 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            Could not load everything: {loadError}. It will retry when you come back to this tab.
+          </div>
+        )}
 
         {/* ── RESERVATIONS TAB ── */}
         {activeTab === 'reservations' && (
           <div>
             {/* Status filter */}
             <div className="flex gap-2 mb-5 flex-wrap">
-              {['pending', 'approved', 'rejected', 'checked_out', 'returned', 'all'].map(s => (
+              {['pending', 'approved', 'rejected', 'checked_out', 'returned', 'cancelled', 'all'].map(s => (
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}
@@ -258,7 +272,7 @@ export default function AdminPage() {
                       </p>
                       {r.purpose && <p className="text-sm text-gray-600 mt-1">Purpose: {r.purpose}</p>}
                       <p className="text-xs text-gray-400 mt-1">
-                        Requested: {new Date(r.requested_at).toLocaleDateString()}
+                        Requested: {fromSqlTime(r.requested_at).toLocaleDateString()}
                       </p>
                     </div>
                     {r.status === 'pending' && (
@@ -398,7 +412,7 @@ export default function AdminPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
                   <select
                     value={newItem.category}
-                    onChange={e => setNewItem(p => ({ ...p, category: e.target.value as any }))}
+                    onChange={e => setNewItem(p => ({ ...p, category: e.target.value as 'prop' | 'costume' }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500"
                   >
                     <option value="prop">Prop</option>
@@ -530,7 +544,7 @@ export default function AdminPage() {
                     </div>
                     <p className="text-sm text-gray-500 truncate">{u.email}</p>
                     <p className="text-xs text-gray-400">
-                      {u.reservation_count} reservation{u.reservation_count === 1 ? '' : 's'} · joined {u.created_at?.slice(0, 10)}
+                      {u.reservation_count} reservation{u.reservation_count === 1 ? '' : 's'} · joined {fromSqlTime(u.created_at).toLocaleDateString()}
                     </p>
                   </div>
 

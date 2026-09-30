@@ -1,5 +1,10 @@
-import db from '@/lib/db'
+import db, { HOLDS_DURING, today } from '@/lib/db'
 import { handler, newId, requireUser } from '@/lib/auth'
+
+/** A real calendar date in YYYY-MM-DD. Date.parse alone rolls 2026-02-31 over to March 3. */
+const isDate = (s: unknown): s is string =>
+  typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
+  && !isNaN(Date.parse(s)) && new Date(s).toISOString().startsWith(s)
 
 /**
  * GET returns your own reservations. Admins get everyone's, with the requester's email —
@@ -36,34 +41,42 @@ export function POST(req: Request) {
     const body = await req.json().catch(() => ({}))
 
     const itemId = typeof body.item_id === 'string' ? body.item_id : ''
-    const start = typeof body.start_date === 'string' ? body.start_date : ''
-    const end = typeof body.end_date === 'string' ? body.end_date : ''
-    if (!itemId || !start || !end) {
+    const { start_date: start, end_date: end } = body
+    if (!itemId || !isDate(start) || !isDate(end)) {
       return Response.json({ error: 'Item and both dates are required' }, { status: 400 })
+    }
+    const now = today()
+    if (start < now) {
+      return Response.json({ error: 'Start date cannot be in the past' }, { status: 400 })
     }
     if (end < start) {
       return Response.json({ error: 'End date cannot be before the start date' }, { status: 400 })
     }
 
-    const item = db.prepare('SELECT quantity_total FROM items WHERE id = ?').get(itemId) as
-      { quantity_total: number } | undefined
+    const item = db.prepare('SELECT quantity_total FROM items WHERE id = ? AND deleted_at IS NULL')
+      .get(itemId) as { quantity_total: number } | undefined
     if (!item) return Response.json({ error: 'Item not found' }, { status: 404 })
 
     const quantity = Number.isFinite(Number(body.quantity))
       ? Math.max(1, Math.floor(Number(body.quantity)))
       : 1
 
-    // Check against what is actually free, not total stock — otherwise the same unit can be
-    // booked over and over. No await between this read and the insert below, and better-sqlite3
-    // is synchronous, so there is no window for two requests to both pass the check.
+    // Check against what is free for these dates, not total stock — otherwise the same unit
+    // can be booked over and over. No await between this read and the insert below, and
+    // better-sqlite3 is synchronous, so there is no window for two requests to both pass.
+    // ponytail: sums every reservation touching the range, so with quantity > 1 two bookings
+    // that never overlap each other still both count. Conservative, never overbooks; switch to
+    // a per-day peak if items with large quantities start getting refused wrongly.
     const { held } = db.prepare(`
-      SELECT COALESCE(SUM(quantity), 0) AS held FROM reservations
-       WHERE item_id = ? AND status IN ('pending','approved','checked_out')
-    `).get(itemId) as { held: number }
+      SELECT COALESCE(SUM(r.quantity), 0) AS held FROM reservations r
+       WHERE r.item_id = @itemId AND ${HOLDS_DURING}
+    `).get({ itemId, start, end, today: now }) as { held: number }
     const available = item.quantity_total - held
     if (quantity > available) {
       return Response.json(
-        { error: available > 0 ? `Only ${available} available` : 'None available' },
+        { error: available > 0
+            ? `Only ${available} available for those dates`
+            : 'Already booked for those dates' },
         { status: 400 })
     }
 

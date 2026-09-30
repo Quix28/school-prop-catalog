@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { api, getCurrentUser } from '@/lib/client'
+import { api, errorMessage, fromSqlTime, getCurrentUser, localToday } from '@/lib/client'
 import { useLiveData } from '@/lib/useLiveData'
 import type { Reservation } from '@/lib/types'
 import { useRouter } from 'next/navigation'
@@ -55,36 +55,49 @@ export default function MyReservationsPage() {
   const [reservations, setReservations] = useState<ReservationWithItem[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
-
-  useLiveData(() => loadReservations())
+  const [loadError, setLoadError] = useState('')
 
   const loadReservations = async () => {
     const user = await getCurrentUser()
     if (!user) { router.push('/login'); return }
 
-    // The API already scopes this to the signed-in user and joins the item.
-    const { reservations } = await api.get<{ reservations: any[] }>('/api/reservations')
+    // A failed load must not leave the spinner up forever; the focus reload retries it.
+    try {
+      // The API already scopes this to the signed-in user and joins the item.
+      const { reservations } = await api.get<{ reservations: ReservationWithItem[] }>('/api/reservations')
 
-    setReservations((reservations || []).map(r => ({
-      ...r,
-      item_name: r.item_name || 'Unknown Item',
-      item_image: r.item_image || null,
-    })))
-    setLoading(false)
+      setReservations((reservations || []).map(r => ({
+        ...r,
+        item_name: r.item_name || 'Unknown Item',
+        item_image: r.item_image || undefined,
+      })))
+      setLoadError('')
+    } catch (e) {
+      setLoadError(errorMessage(e))
+    } finally {
+      setLoading(false)
+    }
   }
+
+  useLiveData(() => loadReservations())
 
   const handleCancel = async (id: string) => {
     if (!confirm('Cancel this reservation?')) return
     try {
       await api.patch(`/api/reservations/${id}`, { status: 'cancelled' })
       setReservations(prev => prev.map(r => r.id === id ? { ...r, status: 'cancelled' } : r))
-    } catch (e: any) { alert(e.message) }
+    } catch (e) {
+      alert(errorMessage(e))
+      await loadReservations()
+    }
   }
 
   const filtered = filter === 'all' ? reservations : reservations.filter(r => r.status === filter)
 
+  // Compared as date strings: new Date('2026-10-03') is UTC midnight, which in Istanbul would
+  // flag the item overdue from 03:00 on the day it is due back.
   const isOverdue = (r: ReservationWithItem) =>
-    r.status === 'checked_out' && new Date(r.end_date) < new Date()
+    r.status === 'checked_out' && r.end_date < localToday()
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -105,9 +118,15 @@ export default function MyReservationsPage() {
         </a>
       </header>
 
+      {loadError && (
+        <div className="bg-red-50 border-b border-red-200 px-6 py-3 text-red-700 text-sm">
+          Could not load your reservations: {loadError}. It will retry when you come back to this tab.
+        </div>
+      )}
+
       {/* Filter tabs */}
       <div className="bg-white border-b px-6 flex gap-1 overflow-x-auto">
-        {['all', 'pending', 'approved', 'checked_out', 'returned', 'rejected'].map(s => (
+        {['all', 'pending', 'approved', 'checked_out', 'returned', 'rejected', 'cancelled'].map(s => (
           <button
             key={s}
             onClick={() => setFilter(s)}
@@ -174,7 +193,7 @@ export default function MyReservationsPage() {
                       <div className="flex flex-wrap gap-3 text-xs text-gray-500">
                         <span>📅 {r.start_date} → {r.end_date}</span>
                         <span>📦 Qty: {r.quantity}</span>
-                        <span>🕐 Requested: {new Date(r.requested_at).toLocaleDateString('tr-TR')}</span>
+                        <span>🕐 Requested: {fromSqlTime(r.requested_at).toLocaleDateString('tr-TR')}</span>
                       </div>
 
                       {r.purpose && (
@@ -201,8 +220,8 @@ export default function MyReservationsPage() {
                     </div>
                   </div>
 
-                  {/* Cancel button */}
-                  {r.status === 'pending' && (
+                  {/* Cancel button — the server allows cancelling until the item is picked up */}
+                  {(r.status === 'pending' || r.status === 'approved') && (
                     <div className="px-5 pb-4">
                       <button
                         onClick={() => handleCancel(r.id)}

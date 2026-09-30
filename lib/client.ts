@@ -37,6 +37,17 @@ export const api = {
 /** Message of anything caught, for display. */
 export const errorMessage = (e: unknown) => e instanceof Error ? e.message : String(e)
 
+/** Today in the browser's timezone, as YYYY-MM-DD (toISOString alone would give the UTC date). */
+export const localToday = () =>
+  new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
+
+/**
+ * SQLite's datetime('now') is UTC without a zone marker; parsed bare it would read as local
+ * (and Safari rejects the space). Anything already ISO, e.g. imported rows, passes through.
+ */
+export const fromSqlTime = (s: string) =>
+  new Date(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s) ? s.replace(' ', 'T') + 'Z' : s)
+
 export type SessionUser = {
   id: string
   email: string

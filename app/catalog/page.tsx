@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { api, getCurrentUser, signOut, type SessionUser } from '@/lib/client'
+import { api, errorMessage, getCurrentUser, localToday, signOut, type SessionUser } from '@/lib/client'
 import { useLiveData } from '@/lib/useLiveData'
 import type { Item } from '@/lib/types'
 import { useRouter } from 'next/navigation'
@@ -24,17 +24,25 @@ export default function CatalogPage() {
   })
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
-
-  useLiveData(() => checkAuthAndLoad())
+  const [loadError, setLoadError] = useState('')
 
   const checkAuthAndLoad = async () => {
     const user = await getCurrentUser()
     if (!user) { router.push('/login'); return }
     setUser(user)
-    const { items } = await api.get<{ items: Item[] }>('/api/items')
-    setItems(items || [])
-    setLoading(false)
+    // A failed load must not leave the spinner up forever; the focus reload retries it.
+    try {
+      const { items } = await api.get<{ items: Item[] }>('/api/items')
+      setItems(items || [])
+      setLoadError('')
+    } catch (e) {
+      setLoadError(errorMessage(e))
+    } finally {
+      setLoading(false)
+    }
   }
+
+  useLiveData(() => checkAuthAndLoad())
 
   const handleSignOut = async () => {
     await signOut()
@@ -60,8 +68,8 @@ export default function CatalogPage() {
       // Pull fresh stock after reserving rather than assuming nothing changed.
       const { items } = await api.get<{ items: Item[] }>('/api/items')
       setItems(items || [])
-    } catch (e: any) {
-      setErrorMsg(e.message)
+    } catch (e) {
+      setErrorMsg(errorMessage(e))
     } finally {
       setReserving(false)
     }
@@ -118,6 +126,11 @@ export default function CatalogPage() {
     </header>
 
       {/* Success/Error banner */}
+      {loadError && (
+        <div className="bg-red-50 border-b border-red-200 px-6 py-3 text-red-700 text-sm">
+          Could not load the catalog: {loadError}. It will retry when you come back to this tab.
+        </div>
+      )}
       {successMsg && (
         <div className="bg-green-50 border-b border-green-200 px-6 py-3 text-green-700 text-sm flex justify-between">
           ✅ {successMsg}
@@ -213,30 +226,27 @@ export default function CatalogPage() {
               {/* Availability */}
               <div className="flex items-center justify-between mb-3">
                 <span className={`text-sm font-medium ${
-                  item.quantity_available > 0 ? 'text-green-600' : 'text-red-500'
+                  item.quantity_available > 0 ? 'text-green-600' : 'text-amber-600'
                 }`}>
                   {item.quantity_available > 0
-                    ? `✓ ${item.quantity_available} available`
-                    : '✗ Not available'}
+                    ? `✓ ${item.quantity_available} available today`
+                    : 'Booked today'}
                 </span>
                 {item.condition && (
                   <span className="text-xs text-gray-400 capitalize">{item.condition}</span>
                 )}
               </div>
 
+              {/* Always offered: booked today can still be free on other dates, which the
+                  server checks for the range actually chosen. */}
               <button
                 onClick={() => {
                   setSelectedItem(item)
                   setErrorMsg('')
                 }}
-                disabled={item.quantity_available === 0}
-                className={`w-full py-2 rounded-lg text-sm font-medium transition-colors ${
-                  item.quantity_available > 0
-                    ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                }`}
+                className="w-full py-2 rounded-lg text-sm font-medium transition-colors bg-indigo-600 text-white hover:bg-indigo-700"
               >
-                {item.quantity_available > 0 ? 'Reserve' : 'Unavailable'}
+                Reserve
               </button>
             </div>
           </div>
@@ -264,7 +274,7 @@ export default function CatalogPage() {
                     type="date"
                     value={reservationForm.start_date}
                     onChange={e => setReservationForm(f => ({ ...f, start_date: e.target.value }))}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={localToday()}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 </div>
@@ -274,7 +284,7 @@ export default function CatalogPage() {
                     type="date"
                     value={reservationForm.end_date}
                     onChange={e => setReservationForm(f => ({ ...f, end_date: e.target.value }))}
-                    min={reservationForm.start_date || new Date().toISOString().split('T')[0]}
+                    min={reservationForm.start_date || localToday()}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 </div>
@@ -282,12 +292,12 @@ export default function CatalogPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantity (max: {selectedItem.quantity_available})
+                  Quantity (max: {selectedItem.quantity_total})
                 </label>
                 <input
                   type="number"
                   min={1}
-                  max={selectedItem.quantity_available}
+                  max={selectedItem.quantity_total}
                   value={reservationForm.quantity}
                   onChange={e => setReservationForm(f => ({ ...f, quantity: parseInt(e.target.value) }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
