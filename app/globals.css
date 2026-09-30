@@ -12,15 +12,22 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Light only: every page draws white cards with dark text of its own, and inputs inherit the
+   body colour, so a dark theme here would make typed text invisible on those cards. */
+:root {
+  color-scheme: light;
+}
+
+/* Tailwind v4 draws a bare `border` in currentColor. The layout was written for v3's light
+   gray, which only looked right before because the text colour was accidentally white. */
+@layer base {
+  *, ::after, ::before, ::backdrop, ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
   }
 }
 
 body {
-  background: var(--foreground);
-  color: var(--background);
+  background: var(--background);
+  color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
