@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 // Keep the database off the SD card if you can — point DATA_DIR at a USB SSD.
@@ -107,6 +107,22 @@ db.prepare(`
    WHERE verified_at IS NULL AND verify_expires_at IS NOT NULL
      AND verify_expires_at < datetime('now','-7 days')
 `).run()
+
+// A photo uploaded from an Add Item form that was then abandoned is referenced by nothing.
+// Sweep those when the real server starts; the age check leaves alone any form that might
+// still be open. Not during `next build` or in dev, which run this module against your local
+// data folder, where deleting files would be a surprise.
+if (process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-production-build') {
+  const refs = (db.prepare('SELECT image_url, additional_images FROM items').all() as
+    { image_url: string | null; additional_images: string | null }[])
+    .map(r => `${r.image_url} ${r.additional_images}`).join(' ')
+  const cutoff = Date.now() - 86_400_000
+  for (const name of readdirSync(UPLOAD_DIR)) {
+    const path = join(UPLOAD_DIR, name)
+    const info = statSync(path)
+    if (info.isFile() && info.mtimeMs < cutoff && !refs.includes(name)) rmSync(path, { force: true })
+  }
+}
 
 /** A Date in SQLite's datetime('now') format, so text comparisons against it are correct. */
 export const sqlTime = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ')

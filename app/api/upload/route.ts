@@ -3,15 +3,9 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { UPLOAD_DIR } from '@/lib/db'
 import { handler, requireAdmin } from '@/lib/auth'
+import { sniffImageExt } from '@/lib/images'
 
 const MAX_BYTES = 8 * 1024 * 1024
-// Allow-list, not a block-list: an SVG can carry script, so it is deliberately excluded.
-const EXT_BY_TYPE: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-}
 
 export function POST(req: Request) {
   return handler(async () => {
@@ -26,16 +20,18 @@ export function POST(req: Request) {
       return Response.json({ error: 'Image must be 8 MB or smaller' }, { status: 413 })
     }
 
-    const ext = EXT_BY_TYPE[file.type]
+    const bytes = Buffer.from(await file.arrayBuffer())
+    const ext = sniffImageExt(bytes)
     if (!ext) {
       return Response.json({ error: 'Only JPEG, PNG, WebP or GIF images are allowed' },
         { status: 415 })
     }
 
-    // The filename is generated here and the extension comes from the sniffed MIME type —
-    // the client's original name is never used, so it cannot smuggle a path or a bad suffix.
+    // The filename is generated here and the extension comes from the file's own bytes —
+    // neither the client's name nor its claimed type is used, so neither can smuggle a path
+    // or pass off a page as an image.
     const filename = `${randomUUID()}.${ext}`
-    await writeFile(join(UPLOAD_DIR, filename), Buffer.from(await file.arrayBuffer()))
+    await writeFile(join(/* turbopackIgnore: true */ UPLOAD_DIR, filename), bytes)
 
     return Response.json({ url: `/api/uploads/${filename}` }, { status: 201 })
   })

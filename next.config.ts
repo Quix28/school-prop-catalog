@@ -33,12 +33,25 @@ const securityHeaders = [
     : []),
 ];
 
+// Uploaded photos, served from the app's own origin. A polyglot file (valid GIF header plus
+// markup) must never run as a page: no sniffing, download instead of render if opened
+// directly (<img> ignores Content-Disposition), and a sandbox with no script if it ever does
+// reach a document context. These must be set here, not in the route: Next drops a route's
+// header when a headers() rule already sets the same name. The later rule wins.
+const uploadHeaders = [
+  { key: "Content-Security-Policy", value: "default-src 'none'; sandbox" },
+  { key: "Content-Disposition", value: "attachment" },
+];
+
 const nextConfig: NextConfig = {
   reactCompiler: true,
   // Don't advertise the framework/version.
   poweredByHeader: false,
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      { source: "/api/uploads/:path*", headers: uploadHeaders },
+    ];
   },
   // Ship a self-contained server so the Pi only needs the build output, not the full
   // node_modules tree. Lets you build on a faster machine and rsync the result over.
