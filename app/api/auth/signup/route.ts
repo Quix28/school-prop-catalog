@@ -4,10 +4,9 @@ import { clientIp, rateLimit } from '@/lib/ratelimit'
 import { mailConfigured, sendVerificationEmail } from '@/lib/mail'
 import { issueVerificationToken } from '@/lib/verification'
 
-// Enforced here, not in the browser: the form's copy of these rules can be bypassed.
+// Enforced on the server; the form's checks can be bypassed.
 const ALLOWED_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || 'robcol.k12.tr'
-// A whole-string match on a plain address. An endsWith check alone accepts
-// "<x@evil.com>@school.tr", which mail libraries deliver to x@evil.com.
+// Whole-address match: endsWith accepted "<x@evil.com>@school.tr".
 const EMAIL_RE = new RegExp(`^[a-z0-9._%+-]+@${ALLOWED_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
 
 const tooMany = (retryAfterSeconds: number) =>
@@ -16,7 +15,7 @@ const tooMany = (retryAfterSeconds: number) =>
 
 export function POST(req: Request) {
   return handler(async () => {
-    // Refuse rather than create accounts nobody can ever confirm.
+    // No mail, no sign-up.
     if (!mailConfigured()) {
       return Response.json(
         { error: 'Sign-up is unavailable: the server cannot send confirmation email.' },
@@ -38,9 +37,7 @@ export function POST(req: Request) {
         { status: 400 })
     }
 
-    // Counted only once the request is valid, so typos don't use up anyone's quota. The
-    // per-address limit stops inbox flooding; the per-IP one is loose because a whole class
-    // registers from the same school network (or the same 'unknown' without TRUST_PROXY).
+    // Counted after validation. Per-IP is loose: a whole class shares one network.
     const perEmail = rateLimit(`signup:${normalized}`, 3, 15 * 60_000)
     if (!perEmail.ok) return tooMany(perEmail.retryAfterSeconds)
     const perIp = rateLimit(`signup-ip:${clientIp(req)}`, 60, 60 * 60_000)
@@ -55,10 +52,8 @@ export function POST(req: Request) {
     if (existing?.verified_at) {
       return Response.json({ error: 'An account with that email already exists' }, { status: 409 })
     } else if (existing) {
-      // The address was registered but never confirmed, so nobody has proven they own it.
-      // Overwrite it instead of returning 409: otherwise anyone could permanently block a
-      // classmate from signing up just by submitting their address first. Confirming needs
-      // this password too, so an overwrite by a stranger cannot be activated by the owner.
+      // Unconfirmed: overwrite rather than 409, so nobody can squat an address. Confirming
+      // needs this password, so a stranger's overwrite can't be activated by the owner.
       db.prepare(`
         UPDATE profiles SET password_hash = ?, full_name = ?, updated_at = datetime('now')
          WHERE id = ?
@@ -85,8 +80,7 @@ export function POST(req: Request) {
         { status: 502 })
     }
 
-    // Deliberately no session: the account is inert until the link in the email is opened,
-    // which is the whole point — only the inbox owner can activate it.
+    // No session until the email is confirmed.
     return Response.json({ pending: true, email: normalized }, { status: 201 })
   })
 }

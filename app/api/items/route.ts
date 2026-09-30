@@ -4,14 +4,12 @@ import type { Item } from '@/lib/types'
 
 type ItemRow = Omit<Item, 'additional_images'> & { additional_images: string | null; held: number }
 
-/** additional_images was a Postgres text[]; in SQLite it is a JSON string. */
+/** additional_images is stored as a JSON string. */
 function toItem(row: ItemRow): Item {
   const { held, ...rest } = row
   return {
     ...rest,
-    // Availability is derived, not stored: the stored column drifted because nothing ever
-    // decremented it. Total minus units held *today*; a booking for next month must not show
-    // the item as gone now. Whether a chosen date range is free is decided when reserving.
+    // Derived, not stored: units free today. Date ranges are checked when reserving.
     quantity_available: Math.max(0, row.quantity_total - held),
     additional_images: row.additional_images ? JSON.parse(row.additional_images) : null,
   }
@@ -42,7 +40,7 @@ export function POST(req: Request) {
     if (!name) return Response.json({ error: 'Name is required' }, { status: 400 })
 
     const category = body.category === 'costume' ? 'costume' : 'prop'
-    // Never trust a client-supplied number: NaN or a negative would corrupt availability.
+    // Reject NaN and negatives.
     const total = Number.isFinite(Number(body.quantity_total))
       ? Math.max(1, Math.floor(Number(body.quantity_total)))
       : 1
@@ -63,7 +61,6 @@ export function POST(req: Request) {
       admin.id,
     )
 
-    // A brand-new item holds nothing yet, so held is 0.
     const row = db.prepare('SELECT *, 0 AS held FROM items WHERE id = ?').get(id) as ItemRow
     return Response.json({ item: toItem(row) }, { status: 201 })
   })

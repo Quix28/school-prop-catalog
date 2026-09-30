@@ -1,6 +1,3 @@
-// app/login/page.tsx
-// Email/Password Login for Students
-
 'use client'
 
 import { useState } from 'react'
@@ -25,15 +22,12 @@ export default function LoginPage() {
       setUnverified(false)
       setResendMsg('')
 
-      // api.post throws with the server's message on a non-2xx, so no error flag to check.
       await api.post('/api/auth/login', { email, password })
 
-      // Success - redirect to catalog
       router.push('/catalog')
       
     } catch (error) {
       setError(errorMessage(error) || 'Failed to sign in')
-      // The only way to get a new link otherwise is the page the old link opens.
       setUnverified(error instanceof ApiError && error.data?.unverified === true)
       setLoading(false)
     }

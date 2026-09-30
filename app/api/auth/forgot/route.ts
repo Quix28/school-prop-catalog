@@ -24,9 +24,8 @@ export function POST(req: Request) {
     const row = db.prepare('SELECT id FROM profiles WHERE email = ? AND verified_at IS NOT NULL')
       .get(normalized) as { id: string } | undefined
 
-    // Not awaited, and the same reply either way: waiting on SMTP only for real accounts would
-    // let the response time reveal which school addresses are registered. An unconfirmed
-    // sign-up gets nothing — signing up again already replaces its password.
+    // Not awaited and same reply either way, so timing reveals nothing. Unconfirmed accounts
+    // get no link: signing up again replaces their password.
     if (row) {
       sendPasswordResetEmail(normalized, issueResetToken(row.id))
         .catch(e => console.error('password reset email failed:', e))

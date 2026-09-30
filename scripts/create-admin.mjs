@@ -1,9 +1,7 @@
 #!/usr/bin/env node
-// Creates (or promotes) an admin account. Run once after first deploy:
+// Creates or promotes an admin:
 //   node --env-file=.env.local scripts/create-admin.mjs
-// --env-file matters: without it DATA_DIR is ignored and the admin lands in a different
-// database from the one the server reads.
-// Password is prompted, never passed as an argument — argv shows up in `ps` and shell history.
+// Without --env-file, DATA_DIR is ignored. The password is prompted, never an argument.
 
 import { createInterface } from 'node:readline/promises'
 import { randomUUID, scrypt as _scrypt, randomBytes } from 'node:crypto'
@@ -19,7 +17,7 @@ mkdirSync(DATA_DIR, { recursive: true })
 const db = new Database(join(DATA_DIR, 'catalog.db'))
 db.pragma('journal_mode = WAL')
 
-// Same schema statement the app uses, so this script works before the server has ever run.
+// Same schema as the app, so this works before the server has run.
 db.exec(`
   CREATE TABLE IF NOT EXISTS profiles (
     id            TEXT PRIMARY KEY,
@@ -36,9 +34,8 @@ db.exec(`
 `)
 
 /**
- * Prompt interactively on a TTY; otherwise consume piped lines in order, so the script also
- * works unattended:  printf 'a@b.tr\nName\npw\npw\n' | node scripts/create-admin.mjs
- * readline's question() never resolves once a piped stdin has ended, hence the split.
+ * Prompts on a TTY, otherwise reads piped lines:
+ *   printf 'a@b.tr\nName\npw\npw\n' | node scripts/create-admin.mjs
  */
 let ask
 if (process.stdin.isTTY) {
@@ -67,7 +64,7 @@ const hash = `${salt.toString('hex')}:${key.toString('hex')}`
 
 const existing = db.prepare('SELECT id FROM profiles WHERE email = ?').get(email)
 if (existing) {
-  // Mark verified: an admin created at the console has proven itself by having shell access.
+  // Shell access is proof enough: mark verified.
   db.prepare(`UPDATE profiles SET role = 'admin', password_hash = ?, verified_at = COALESCE(verified_at, datetime('now')), verify_token_hash = NULL, updated_at = datetime('now') WHERE id = ?`)
     .run(hash, existing.id)
   console.log(`\nExisting account ${email} promoted to admin and password reset.`)

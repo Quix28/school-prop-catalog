@@ -48,9 +48,7 @@ export default function AdminPage() {
 })
 
   const loadData = async () => {
-    // A failed load must not leave the spinner up forever; the focus reload retries it.
     try {
-      // The API joins items and profiles server-side, so the separate profile lookup is gone.
       const [{ items: itemsData }, { reservations: resData }, { users: usersData }] = await Promise.all([
         api.get<{ items: Item[] }>('/api/items'),
         api.get<{ reservations: ReservationWithDetails[] }>('/api/reservations'),
@@ -73,7 +71,7 @@ export default function AdminPage() {
   const checkAdminAndLoad = async () => {
     const user = await getCurrentUser()
     if (!user) { router.push('/admin-login'); return }
-    // This redirect is convenience only — the API enforces admin on every write.
+    // Convenience only; the API enforces admin.
     if (user.role !== 'admin') { router.push('/login'); return }
     setMe(user.id)
 
@@ -81,16 +79,14 @@ export default function AdminPage() {
     setLoading(false)
   }
 
-  // Reloads on focus too — a second admin approving something should show up here.
   useLiveData(() => checkAdminAndLoad())
 
   const updateReservationStatus = async (id: string, status: Reservation['status']) => {
     try {
-      // reviewed_at / reviewed_by are stamped server-side from the session.
       await api.patch(`/api/reservations/${id}`, { status })
       setReservations(prev => prev.map(r => r.id === id ? { ...r, status } : r))
     } catch (e) {
-      // Usually a 409: someone else changed it first. Show the real state instead of ours.
+      // Usually a 409: reload to show the real state.
       alert(errorMessage(e))
       await loadData()
     }
@@ -101,7 +97,6 @@ export default function AdminPage() {
     if (!file) return
     setUploading(true)
     try {
-      // The server validates the type, caps the size and names the file.
       const { url } = await api.upload<{ url: string }>('/api/upload', file)
       setNewItem(prev => ({ ...prev, image_url: url }))
     } catch (e) {
@@ -116,7 +111,6 @@ export default function AdminPage() {
     setSaveMsg('')
     const { quantity_total, name, description, category, subcategory, notes, image_url } = newItem
     try {
-      // created_by and quantity_available are set server-side.
       await api.post('/api/items', {
         name, description, category, subcategory, notes, image_url, quantity_total,
       })
@@ -139,7 +133,6 @@ export default function AdminPage() {
     setUserMsg(null)
     if (!promoteCode) { setUserMsg({ text: 'Enter the confirmation code first.', ok: false }); return }
     try {
-      // The code is verified on the server; sending it from here is not the check.
       await api.patch(`/api/users/${u.id}`, { role, code: promoteCode })
       setUsers(prev => prev.map(x => x.id === u.id ? { ...x, role } : x))
       setUserMsg({ text: `${u.email} is now ${role === 'admin' ? 'an admin' : 'a student'}.`, ok: true })
@@ -159,15 +152,14 @@ export default function AdminPage() {
 
   const pendingCount = reservations.filter(r => r.status === 'pending').length
 
-  // Built from the items actually present, so the buttons follow whatever subcategories
-  // have been typed in rather than a hardcoded list.
+  // Subcategories that actually exist.
   const itemSubcategories = Array.from(new Set(
     items.map(i => i.subcategory?.trim()).filter((s): s is string => !!s)
   )).sort((a, b) => a.localeCompare(b))
 
   const filteredItems = items.filter(i => {
     const matchesSub = itemSubFilter === 'all' || i.subcategory?.trim() === itemSubFilter
-    // Same fields the student catalog searches, so results match between the two views.
+    // Same fields as the catalog search.
     const q = itemSearch.toLowerCase()
     const matchesSearch = !q
       || i.name.toLowerCase().includes(q)
@@ -557,7 +549,6 @@ export default function AdminPage() {
                         Make Admin
                       </button>
                     ) : u.id === me ? (
-                      // Demoting yourself locks you out of this very panel.
                       <span className="text-xs text-gray-400">Can&apos;t change your own role</span>
                     ) : (
                       <button

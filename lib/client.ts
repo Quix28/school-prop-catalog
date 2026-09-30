@@ -1,7 +1,6 @@
-// Thin fetch wrapper so pages read almost like the old Supabase calls.
-// Throws on non-2xx with the server's message, which the pages already surface to the user.
+// Fetch wrapper; throws the server's error message on non-2xx.
 
-/** Thrown for a non-2xx reply; `data` keeps the rest of the body (e.g. `unverified`). */
+/** `data` holds the rest of the error body, e.g. `unverified`. */
 export class ApiError extends Error {
   constructor(message: string, readonly data: Record<string, unknown> | null) {
     super(message)
@@ -34,17 +33,13 @@ export const api = {
   },
 }
 
-/** Message of anything caught, for display. */
 export const errorMessage = (e: unknown) => e instanceof Error ? e.message : String(e)
 
-/** Today in the browser's timezone, as YYYY-MM-DD (toISOString alone would give the UTC date). */
+/** Today in local time, as YYYY-MM-DD. */
 export const localToday = () =>
   new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
 
-/**
- * SQLite's datetime('now') is UTC without a zone marker; parsed bare it would read as local
- * (and Safari rejects the space). Anything already ISO, e.g. imported rows, passes through.
- */
+/** Parses SQLite's zone-less UTC datetime; ISO strings pass through. */
 export const fromSqlTime = (s: string) =>
   new Date(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s) ? s.replace(' ', 'T') + 'Z' : s)
 
@@ -55,7 +50,6 @@ export type SessionUser = {
   role: 'student' | 'admin'
 }
 
-/** Replaces supabase.auth.getUser(). */
 export const getCurrentUser = () =>
   api.get<{ user: SessionUser | null }>('/api/auth/me').then(r => r.user).catch(() => null)
 

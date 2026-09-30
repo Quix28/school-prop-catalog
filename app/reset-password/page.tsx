@@ -4,10 +4,7 @@ import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { api, ApiError, errorMessage } from '@/lib/client'
 
-/**
- * Without a token: ask for the address and email a link. With one (the emailed link): choose
- * the new password. Opening the link changes nothing, so mail scanners cannot spend it.
- */
+/** No token: request a link. With a token: set the new password. */
 function ResetPassword() {
   const token = useSearchParams().get('token') || ''
   const [state, setState] = useState<'form' | 'done' | 'invalid'>('form')

@@ -2,10 +2,8 @@ import Database from 'better-sqlite3'
 import { mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-// Keep the database off the SD card if you can — point DATA_DIR at a USB SSD.
-// SD cards wear out under write load and a Pi's rootfs is the worst place for a DB.
-// turbopackIgnore: a cwd-based path makes the build tracer copy the entire project (.env.local,
-// .git, this database) into .next/standalone, which the deploy then ships to the Pi.
+// On the Pi, point DATA_DIR at an SSD; SD cards wear out.
+// turbopackIgnore stops the build tracer copying the whole project into the standalone output.
 export const DATA_DIR = process.env.DATA_DIR || join(/* turbopackIgnore: true */ process.cwd(), 'data')
 export const UPLOAD_DIR = join(/* turbopackIgnore: true */ DATA_DIR, 'uploads')
 
@@ -13,7 +11,7 @@ mkdirSync(UPLOAD_DIR, { recursive: true })
 
 const db = new Database(join(DATA_DIR, 'catalog.db'))
 
-// WAL lets readers run while a write is in progress — worth it even at school scale.
+// WAL: reads don't wait for writes.
 db.pragma('journal_mode = WAL')
 db.pragma('foreign_keys = ON')
 
@@ -24,11 +22,11 @@ db.exec(`
     full_name     TEXT,
     role          TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('student','admin')),
     password_hash TEXT NOT NULL,
-    -- Null until the address is proven: the account exists but cannot sign in.
+    -- Null until the email is confirmed; unconfirmed accounts can't sign in.
     verified_at        TEXT,
     verify_token_hash  TEXT,
     verify_expires_at  TEXT,
-    -- Set while a forgotten-password link is outstanding.
+    -- Pending password reset.
     reset_token_hash   TEXT,
     reset_expires_at   TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
@@ -50,7 +48,7 @@ db.exec(`
     created_at         TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
     created_by         TEXT REFERENCES profiles(id) ON DELETE SET NULL,
-    -- Soft delete: a hard delete would cascade away the reservation history of the item.
+    -- Soft delete keeps reservation history.
     deleted_at         TEXT
   );
 
@@ -83,10 +81,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_items_name ON items(name);
 `)
 
-// --- migrations for databases created before a column existed ---
-// SQLite has no ADD COLUMN IF NOT EXISTS, so check the table shape first. IMMEDIATE takes the
-// write lock before that check: `next build` loads this module in several processes at once,
-// and two of them both adding the column would crash the second.
+// Add columns missing from older databases. IMMEDIATE locks first, since next build
+// runs this in several processes at once.
 db.transaction(() => {
   for (const [table, col] of [
     ['profiles', 'verified_at'],
@@ -101,28 +97,24 @@ db.transaction(() => {
   }
 }).immediate()
 
-// Accounts that predate verification are grandfathered in, otherwise the existing admin
-// would be locked out by an upgrade. Only rows with no pending token qualify.
+// Accounts from before email confirmation existed count as confirmed.
 db.exec(`
   UPDATE profiles SET verified_at = created_at
    WHERE verified_at IS NULL AND verify_token_hash IS NULL
 `)
 
-// Expired sessions are dead weight; clearing them at startup is enough at this scale.
+// Drop expired sessions.
 db.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run()
 
-// Unclaimed signups must not squat an address forever — otherwise registering
-// someone else's email would permanently block the real owner from ever signing up.
+// Drop sign-ups never confirmed, so nobody can squat an address.
 db.prepare(`
   DELETE FROM profiles
    WHERE verified_at IS NULL AND verify_expires_at IS NOT NULL
      AND verify_expires_at < datetime('now','-7 days')
 `).run()
 
-// A photo uploaded from an Add Item form that was then abandoned is referenced by nothing.
-// Sweep those when the real server starts; the age check leaves alone any form that might
-// still be open. Not during `next build` or in dev, which run this module against your local
-// data folder, where deleting files would be a surprise.
+// Delete day-old uploads no item uses (abandoned Add Item forms). Production server only,
+// never during build or dev.
 if (process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-production-build') {
   const refs = (db.prepare('SELECT image_url, additional_images FROM items').all() as
     { image_url: string | null; additional_images: string | null }[])
@@ -135,18 +127,14 @@ if (process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-p
   }
 }
 
-/** Today in the server's timezone, as the YYYY-MM-DD string reservations are stored in. */
+/** Today in server time, as YYYY-MM-DD. */
 export const today = () =>
   new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
 
-/** A Date in SQLite's datetime('now') format, so text comparisons against it are correct. */
+/** A Date in SQLite datetime('now') format, so text comparisons work. */
 export const sqlTime = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ')
 
-/**
- * SQL condition: reservation `r` holds units at some point in [@start, @end] (inclusive dates).
- * A checked-out item past its end date is overdue but still physically out, so it keeps
- * holding through today until an admin marks it returned.
- */
+/** SQL: reservation `r` holds units during [@start, @end]. Overdue checkouts hold through today. */
 export const HOLDS_DURING = `
   r.status IN ('pending','approved','checked_out')
   AND r.start_date <= @end

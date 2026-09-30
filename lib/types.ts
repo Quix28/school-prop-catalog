@@ -1,5 +1,4 @@
-// Shared row shapes. Same fields the Supabase version exposed, so the pages'
-// rendering code did not need to change — only where the data comes from.
+// Shared row shapes.
 
 export type Profile = {
   id: string

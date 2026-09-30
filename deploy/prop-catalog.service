@@ -8,24 +8,22 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Recent Raspberry Pi OS images have no 'pi' user unless you named it so in the imager —
-# use the account that owns /srv/prop-catalog (check with: ls -ld /srv/prop-catalog).
+# Use the account that owns /srv/prop-catalog; newer Pi OS images may have no 'pi' user.
 User=pi
 WorkingDirectory=/srv/prop-catalog
 EnvironmentFile=/srv/prop-catalog/.env.local
-# Reservation dates are compared with the server's "today", so it must be the school's day.
+# Reservation dates use the server's local day.
 Environment=TZ=Europe/Istanbul
 ExecStart=/usr/bin/node server.js
 Restart=on-failure
 RestartSec=5
 
-# The service only ever needs to write inside DATA_DIR.
+# Only DATA_DIR needs to be writable.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=read-only
-# Leading '-': a missing path is skipped instead of failing the unit with 226/NAMESPACE (e.g.
-# when DATA_DIR lives on the SSD instead). Add your DATA_DIR here if it is somewhere else.
+# '-' skips a missing path instead of failing the unit. Add DATA_DIR if it's elsewhere.
 ReadWritePaths=-/srv/prop-catalog/data
 
 [Install]

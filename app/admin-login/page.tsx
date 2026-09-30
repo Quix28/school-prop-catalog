@@ -19,8 +19,7 @@ export default function AdminLoginPage() {
 
       const { user } = await api.post<{ user: { role: string } }>('/api/auth/login', { email, password })
 
-      // The role comes back from the server with the session. This check only decides where
-      // to send the user — every admin API route re-checks the role independently.
+      // Only picks the redirect; admin routes check the role on the server.
       if (user.role !== 'admin') {
         await api.post('/api/auth/logout')
         throw new Error('You do not have admin privileges.')

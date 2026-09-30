@@ -4,11 +4,7 @@ import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { api, ApiError, errorMessage } from '@/lib/client'
 
-/**
- * The emailed link lands here. Activation is a POST with the sign-up password, never the page
- * load itself: mail scanners open links on their own, and without the password an address
- * someone else registered could be activated with that stranger's password.
- */
+/** Confirms with the sign-up password; loading the page alone changes nothing. */
 function VerifyResult() {
   const router = useRouter()
   const token = useSearchParams().get('token') || ''

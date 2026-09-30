@@ -3,11 +3,7 @@ import { createSession, handler, SESSION_COOKIE, sessionCookieOptions } from '@/
 import { rateLimit } from '@/lib/ratelimit'
 import { confirmAccount, hashToken } from '@/lib/verification'
 
-/**
- * POSTed by the /verify page the emailed link opens. Not a GET: mail scanners such as
- * Microsoft Safe Links open every link in a message, and a GET that activated the account
- * would spend the single-use token (and hand the session to the scanner).
- */
+/** Called by /verify. A POST, so mail scanners that open links can't spend the token. */
 export function POST(req: Request) {
   return handler(async () => {
     const { token, password } = await req.json().catch(() => ({}))
@@ -15,7 +11,7 @@ export function POST(req: Request) {
       return Response.json({ error: 'Token and password are required' }, { status: 400 })
     }
 
-    // Keyed on the token: guessing the password needs the link, and the link is one inbox.
+    // Per token: guessing needs the link.
     const limited = rateLimit(`verify:${hashToken(token)}`)
     if (!limited.ok) {
       return Response.json({ error: 'Too many attempts. Try again later.' },
@@ -24,7 +20,7 @@ export function POST(req: Request) {
 
     const result = await confirmAccount(token, password)
     if (result === 'invalid') {
-      // Expired, already used, replaced by a newer link, or forged — all the same to the visitor.
+      // Expired, used, replaced or forged.
       return Response.json({ error: 'This link is no longer valid.', invalid: true }, { status: 410 })
     }
     if (result === 'wrong_password') {
@@ -34,7 +30,7 @@ export function POST(req: Request) {
       }, { status: 401 })
     }
 
-    // Token plus password proves both inbox access and account ownership, so sign them in.
+    // Token plus password proves ownership: sign in.
     const { token: sessionToken, expires } = createSession(result.id)
     ;(await cookies()).set(SESSION_COOKIE, sessionToken, sessionCookieOptions(expires))
     return Response.json({ ok: true })

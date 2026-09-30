@@ -1,11 +1,7 @@
 import db from '@/lib/db'
 import { handler, requireUser } from '@/lib/auth'
 
-/**
- * The states each status may be entered from. Enforced in the UPDATE itself, not just a prior
- * read, so a stale admin page or two admins acting at once cannot revive a cancelled request,
- * and a student cannot cancel a prop they are already holding.
- */
+/** Valid previous states for each status, enforced in the UPDATE itself. */
 const ALLOWED_FROM: Record<string, string[]> = {
   approved: ['pending'],
   rejected: ['pending'],
@@ -27,8 +23,7 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
       { user_id: string } | undefined
     if (!row) return Response.json({ error: 'Reservation not found' }, { status: 404 })
 
-    // A student may only cancel, and only their own. Everything in the review workflow is
-    // admin-only — the old version enforced this nowhere on the server.
+    // Students may only cancel their own; everything else is admin-only.
     if (status === 'cancelled') {
       if (row.user_id !== user.id && user.role !== 'admin') {
         return Response.json({ error: 'Not your reservation' }, { status: 403 })
@@ -37,7 +32,7 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
       return Response.json({ error: 'Admins only' }, { status: 403 })
     }
 
-    // Each step stamps only its own timestamp, so checkout and return keep who reviewed it.
+    // Each step sets only its own timestamp.
     const info = db.prepare(`
       UPDATE reservations
          SET status = @status,

@@ -1,6 +1,3 @@
-// app/signup/page.tsx
-// Student Signup Page
-
 'use client'
 
 import { useState } from 'react'
@@ -25,25 +22,22 @@ export default function SignupPage() {
       setError('')
       setSuccess(false)
 
-      // Validate passwords match
       if (formData.password !== formData.confirmPassword) {
         throw new Error('Passwords do not match')
       }
 
-      // Validate password length
       if (formData.password.length < 6) {
         throw new Error('Password must be at least 6 characters')
       }
 
-      // The allowed email domain is checked only by the server, which reads it from
-      // ALLOWED_EMAIL_DOMAIN — a copy here would silently disagree once that is changed.
+      // The email domain is checked on the server (ALLOWED_EMAIL_DOMAIN).
       await api.post('/api/auth/signup', {
         email: formData.email,
         password: formData.password,
         fullName: formData.fullName,
       })
 
-      // No redirect: the account cannot be used until the emailed link is opened.
+      // No redirect: the account needs confirming first.
       setSuccess(true)
       setLoading(false)
       

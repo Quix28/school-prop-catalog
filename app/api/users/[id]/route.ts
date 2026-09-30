@@ -3,19 +3,13 @@ import db from '@/lib/db'
 import { handler, requireAdmin } from '@/lib/auth'
 import { clientIp, rateLimit, resetLimit } from '@/lib/ratelimit'
 
-/**
- * Changing someone's role needs an admin session *and* a separate confirmation code, so a
- * borrowed or forgotten session cannot quietly mint new admins.
- *
- * The code lives in ADMIN_PROMOTE_CODE, not in this file — the repository is public, and a
- * literal here would be readable by anyone. Unset means the feature is off rather than open.
- */
+/** Role changes need an admin session plus ADMIN_PROMOTE_CODE. Unset means disabled. */
 function codeMatches(supplied: unknown): boolean {
   const expected = process.env.ADMIN_PROMOTE_CODE
   if (!expected || typeof supplied !== 'string') return false
   const a = Buffer.from(supplied)
   const b = Buffer.from(expected)
-  // Compare lengths separately; timingSafeEqual throws on a mismatch.
+  // timingSafeEqual throws on different lengths.
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
@@ -29,9 +23,7 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
       return Response.json({ error: 'Role must be admin or student' }, { status: 400 })
     }
 
-    // A 4-digit code is guessable in a few thousand tries, so throttle attempts even though
-    // the caller is already an authenticated admin. Reset on a correct code, so only wrong
-    // codes count and an admin sorting out several roles is never locked out.
+    // Throttle code guesses; only wrong codes count.
     const limitKey = `promote:${clientIp(req)}:${admin.id}`
     const limited = rateLimit(limitKey, 5, 10 * 60_000)
     if (!limited.ok) {
@@ -53,11 +45,11 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
       { id: string; email: string; role: string } | undefined
     if (!target) return Response.json({ error: 'User not found' }, { status: 404 })
 
-    // Demoting yourself is how you lock yourself out of the panel you are standing in.
+    // Don't let admins lock themselves out.
     if (target.id === admin.id && role === 'student') {
       return Response.json({ error: 'You cannot remove your own admin role' }, { status: 400 })
     }
-    // And the last admin leaving means nobody can ever approve a reservation again.
+    // Keep at least one admin.
     if (target.role === 'admin' && role === 'student') {
       const { n } = db.prepare(`SELECT COUNT(*) AS n FROM profiles WHERE role = 'admin'`)
         .get() as { n: number }

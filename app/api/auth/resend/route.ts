@@ -24,8 +24,7 @@ export function POST(req: Request) {
     const row = db.prepare('SELECT id, verified_at FROM profiles WHERE email = ?')
       .get(normalized) as { id: string; verified_at: string | null } | undefined
 
-    // Always answer the same way. Saying "no such account" here would turn this endpoint
-    // into a way to discover which school addresses are registered.
+    // Same reply either way, so addresses can't be probed.
     const generic = Response.json({
       ok: true,
       message: 'If that address needs confirming, a new link is on its way.',
@@ -33,7 +32,7 @@ export function POST(req: Request) {
 
     if (!row || row.verified_at) return generic
 
-    // Issuing a new token invalidates the previous one, so an old link in an inbox stops working.
+    // A new token invalidates the old link.
     const token = issueVerificationToken(row.id)
     try {
       await sendVerificationEmail(normalized, token)

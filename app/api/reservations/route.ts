@@ -1,16 +1,12 @@
 import db, { HOLDS_DURING, today } from '@/lib/db'
 import { handler, newId, requireUser } from '@/lib/auth'
 
-/** A real calendar date in YYYY-MM-DD. Date.parse alone rolls 2026-02-31 over to March 3. */
+/** A real YYYY-MM-DD date (Date.parse accepts 2026-02-31). */
 const isDate = (s: unknown): s is string =>
   typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
   && !isNaN(Date.parse(s)) && new Date(s).toISOString().startsWith(s)
 
-/**
- * GET returns your own reservations. Admins get everyone's, with the requester's email —
- * the two implicit Supabase joins (`select('*, items(name, image_url)')` and the separate
- * profiles fetch) become explicit SQL joins here.
- */
+/** Your reservations; admins get everyone's, with the requester's email. */
 export function GET() {
   return handler(async () => {
     const user = await requireUser()
@@ -61,12 +57,9 @@ export function POST(req: Request) {
       ? Math.max(1, Math.floor(Number(body.quantity)))
       : 1
 
-    // Check against what is free for these dates, not total stock — otherwise the same unit
-    // can be booked over and over. No await between this read and the insert below, and
-    // better-sqlite3 is synchronous, so there is no window for two requests to both pass.
-    // ponytail: sums every reservation touching the range, so with quantity > 1 two bookings
-    // that never overlap each other still both count. Conservative, never overbooks; switch to
-    // a per-day peak if items with large quantities start getting refused wrongly.
+    // Units free for these dates. Synchronous check-then-insert, so no race.
+    // ponytail: sums all overlapping bookings, so it can refuse too early when quantity > 1.
+    // Switch to a per-day peak if that happens.
     const { held } = db.prepare(`
       SELECT COALESCE(SUM(r.quantity), 0) AS held FROM reservations r
        WHERE r.item_id = @itemId AND ${HOLDS_DURING}
@@ -81,8 +74,7 @@ export function POST(req: Request) {
     }
 
     const id = newId()
-    // user_id comes from the session, never from the request body — otherwise a student
-    // could file a reservation in someone else's name.
+    // user_id always comes from the session.
     db.prepare(`
       INSERT INTO reservations (id, item_id, user_id, quantity, start_date, end_date, status, purpose)
       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)

@@ -61,9 +61,7 @@ export default function MyReservationsPage() {
     const user = await getCurrentUser()
     if (!user) { router.push('/login'); return }
 
-    // A failed load must not leave the spinner up forever; the focus reload retries it.
     try {
-      // The API already scopes this to the signed-in user and joins the item.
       const { reservations } = await api.get<{ reservations: ReservationWithItem[] }>('/api/reservations')
 
       setReservations((reservations || []).map(r => ({
@@ -94,8 +92,7 @@ export default function MyReservationsPage() {
 
   const filtered = filter === 'all' ? reservations : reservations.filter(r => r.status === filter)
 
-  // Compared as date strings: new Date('2026-10-03') is UTC midnight, which in Istanbul would
-  // flag the item overdue from 03:00 on the day it is due back.
+  // Compare date strings; new Date('YYYY-MM-DD') is UTC midnight.
   const isOverdue = (r: ReservationWithItem) =>
     r.status === 'checked_out' && r.end_date < localToday()
 
@@ -220,7 +217,7 @@ export default function MyReservationsPage() {
                     </div>
                   </div>
 
-                  {/* Cancel button — the server allows cancelling until the item is picked up */}
+                  {/* Cancellable until pickup */}
                   {(r.status === 'pending' || r.status === 'approved') && (
                     <div className="px-5 pb-4">
                       <button

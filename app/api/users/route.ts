@@ -1,7 +1,7 @@
 import db from '@/lib/db'
 import { handler, requireAdmin } from '@/lib/auth'
 
-/** Every account, with how many reservations each has ever made. Admins only. */
+/** All accounts with reservation counts. Admins only. */
 export function GET() {
   return handler(async () => {
     await requireAdmin()
@@ -13,7 +13,6 @@ export function GET() {
        GROUP BY p.id
        ORDER BY p.role DESC, p.email
     `).all()
-    // password_hash is deliberately never selected.
     return Response.json({ users })
   })
 }

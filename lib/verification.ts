@@ -3,13 +3,12 @@ import db, { sqlTime } from './db'
 import { hashPassword, verifyPassword } from './auth'
 
 const TOKEN_HOURS = 24
-// Short, because a reset link is as good as the password for as long as it lives.
 const RESET_MINUTES = 60
 
-/** Stored as a SHA-256 hash so a leaked database cannot be used to activate accounts. */
+/** Tokens are stored hashed. */
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
 
-/** Issues a fresh token for a profile and returns the raw value to put in the email. */
+/** New confirmation token; returns the raw value for the email. */
 export function issueVerificationToken(userId: string): string {
   const token = randomBytes(32).toString('hex')
   const expires = sqlTime(new Date(Date.now() + TOKEN_HOURS * 3_600_000))
@@ -23,10 +22,8 @@ export function issueVerificationToken(userId: string): string {
 export type ConfirmResult = { id: string } | 'invalid' | 'wrong_password'
 
 /**
- * Activates an account. Needs the emailed token *and* the password chosen at sign-up:
- * an unconfirmed sign-up can be overwritten by anyone (so nobody can squat an address), and
- * without the password check the real owner's click would activate a stranger's password.
- * Single use: the hash is cleared on success.
+ * Activates an account. Needs the token and the sign-up password: anyone can overwrite an
+ * unconfirmed sign-up, so the link alone could activate a stranger's password.
  */
 export async function confirmAccount(token: string, password: string): Promise<ConfirmResult> {
   const tokenHash = hashToken(token)
@@ -38,8 +35,7 @@ export async function confirmAccount(token: string, password: string): Promise<C
   if (!row) return 'invalid'
   if (!(await verifyPassword(password, row.password_hash))) return 'wrong_password'
 
-  // Re-check the token in the UPDATE: a re-signup during the password hash above replaces
-  // both the password and the token, and must not be activated by this older link.
+  // Re-check the token: a re-signup during the hash above replaces it.
   const info = db.prepare(`
     UPDATE profiles
        SET verified_at = datetime('now'), verify_token_hash = NULL, verify_expires_at = NULL,
@@ -50,7 +46,7 @@ export async function confirmAccount(token: string, password: string): Promise<C
   return info.changes === 1 ? { id: row.id } : 'invalid'
 }
 
-/** Issues a password-reset token for a confirmed account; the previous one stops working. */
+/** New reset token; replaces any previous one. */
 export function issueResetToken(userId: string): string {
   const token = randomBytes(32).toString('hex')
   const expires = sqlTime(new Date(Date.now() + RESET_MINUTES * 60_000))
@@ -61,11 +57,7 @@ export function issueResetToken(userId: string): string {
   return token
 }
 
-/**
- * Sets a new password from a reset link. Checking and spending the token is one UPDATE, so
- * the link works exactly once. Every session is ended too: if the password was reset because
- * someone else knew it, their session must not outlive the change.
- */
+/** Sets the password from a single-use reset token and ends all sessions. */
 export async function resetPassword(token: string, password: string): Promise<boolean> {
   const passwordHash = await hashPassword(password)
   const row = db.prepare(`

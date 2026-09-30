@@ -6,7 +6,7 @@ export function DELETE(_req: Request, { params }: { params: Promise<{ id: string
     await requireAdmin()
     const { id } = await params
 
-    // Deleting a prop someone has checked out would erase the only record of who has it.
+    // Keep the record of who has it.
     const open = db.prepare(`
       SELECT 1 FROM reservations
        WHERE item_id = ? AND status IN ('pending','approved','checked_out') LIMIT 1
@@ -17,7 +17,7 @@ export function DELETE(_req: Request, { params }: { params: Promise<{ id: string
         { status: 409 })
     }
 
-    // Soft delete: the item leaves the catalog, but past reservations keep pointing at it.
+    // Soft delete keeps reservation history.
     const info = db.prepare(`
       UPDATE items SET deleted_at = datetime('now'), updated_at = datetime('now')
        WHERE id = ? AND deleted_at IS NULL

@@ -7,8 +7,7 @@ const eslintConfig = defineConfig([
   ...nextTs,
   {
     rules: {
-      // Plain <img> on purpose: next/image would run an image optimizer (sharp) on the Pi for
-      // photos that are served straight from disk already.
+      // next/image would run an optimizer on the Pi.
       "@next/next/no-img-element": "off",
     },
   },

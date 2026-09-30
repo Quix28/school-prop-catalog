@@ -1,7 +1,4 @@
-/**
- * The only image formats accepted and served. SVG is deliberately absent: it can carry script.
- * One map for both routes, so the upload and serving allowlists cannot drift apart.
- */
+/** Allowed image types, shared by upload and serving. No SVG: it can carry script. */
 export const TYPE_BY_EXT: Record<string, string> = {
   jpg: 'image/jpeg',
   png: 'image/png',
@@ -9,10 +6,7 @@ export const TYPE_BY_EXT: Record<string, string> = {
   gif: 'image/gif',
 }
 
-/**
- * Identifies the format from the file's first bytes. The multipart Content-Type is whatever
- * the client claims, so an HTML page labelled image/gif would otherwise be stored as a .gif.
- */
+/** Detects the format from the file's bytes; the client's Content-Type can lie. */
 export function sniffImageExt(bytes: Uint8Array): string | null {
   const ascii = (from: number, to: number) => String.fromCharCode(...bytes.subarray(from, to))
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpg'

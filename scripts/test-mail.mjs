@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Sends one test email so you can check SMTP settings without going through a signup.
+// Sends a test email to check SMTP settings.
 //   node scripts/test-mail.mjs you@example.com
 
 import { readFileSync } from 'node:fs'
 import nodemailer from 'nodemailer'
 
-// Read .env.local ourselves — this script runs outside Next, which normally loads it.
+// Runs outside Next, so load .env.local here.
 try {
   for (const line of readFileSync('.env.local', 'utf8').split('\n')) {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/)

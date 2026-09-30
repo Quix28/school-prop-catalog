@@ -27,9 +27,7 @@ export function POST(req: Request) {
         { status: 415 })
     }
 
-    // The filename is generated here and the extension comes from the file's own bytes —
-    // neither the client's name nor its claimed type is used, so neither can smuggle a path
-    // or pass off a page as an image.
+    // Server-made name, extension from the bytes: nothing from the client reaches the path.
     const filename = `${randomUUID()}.${ext}`
     await writeFile(join(/* turbopackIgnore: true */ UPLOAD_DIR, filename), bytes)
 

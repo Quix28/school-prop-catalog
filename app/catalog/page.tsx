@@ -30,7 +30,6 @@ export default function CatalogPage() {
     const user = await getCurrentUser()
     if (!user) { router.push('/login'); return }
     setUser(user)
-    // A failed load must not leave the spinner up forever; the focus reload retries it.
     try {
       const { items } = await api.get<{ items: Item[] }>('/api/items')
       setItems(items || [])
@@ -54,7 +53,6 @@ export default function CatalogPage() {
     setReserving(true)
     setErrorMsg('')
     try {
-      // user_id and status are set server-side from the session.
       await api.post('/api/reservations', {
         item_id: selectedItem.id,
         quantity: reservationForm.quantity,
@@ -65,7 +63,6 @@ export default function CatalogPage() {
       setSuccessMsg('Reservation submitted! Awaiting admin approval.')
       setSelectedItem(null)
       setReservationForm({ start_date: '', end_date: '', quantity: 1, purpose: '' })
-      // Pull fresh stock after reserving rather than assuming nothing changed.
       const { items } = await api.get<{ items: Item[] }>('/api/items')
       setItems(items || [])
     } catch (e) {
@@ -75,8 +72,7 @@ export default function CatalogPage() {
     }
   }
 
-  // Offer only subcategories that exist inside the chosen category, so the buttons can
-  // never present a combination with no items behind it.
+  // Only subcategories that exist in the chosen category.
   const subcategories = Array.from(new Set(
     items
       .filter(i => selectedCategory === 'all' || i.category === selectedCategory)
@@ -84,8 +80,7 @@ export default function CatalogPage() {
       .filter((s): s is string => !!s)
   )).sort((a, b) => a.localeCompare(b))
 
-  // Changing category clears the subcategory: keeping it would silently filter to nothing
-  // (e.g. "Hats" still selected after switching to Props) with no visible reason.
+  // Reset the subcategory, or it could filter everything out.
   const chooseCategory = (cat: 'all' | 'prop' | 'costume') => {
     setSelectedCategory(cat)
     setSelectedSubcategory('all')
@@ -165,7 +160,7 @@ export default function CatalogPage() {
           </div>
         </div>
 
-        {/* Subcategory pills — hidden entirely when no item has a subcategory yet */}
+        {/* Subcategory pills, hidden when none exist */}
         {subcategories.length > 0 && (
           <div className="flex gap-2 flex-wrap items-center">
             <span className="text-xs text-gray-400 mr-1">Subcategory:</span>
@@ -237,8 +232,7 @@ export default function CatalogPage() {
                 )}
               </div>
 
-              {/* Always offered: booked today can still be free on other dates, which the
-                  server checks for the range actually chosen. */}
+              {/* Always enabled: other dates may be free */}
               <button
                 onClick={() => {
                   setSelectedItem(item)

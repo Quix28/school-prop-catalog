@@ -9,10 +9,7 @@ export const SESSION_COOKIE = 'session'
 const SESSION_DAYS = 30
 export const MIN_PASSWORD_LENGTH = 6
 
-/**
- * Cookie flags. `Secure` is env-driven because a Secure cookie is silently dropped over
- * plain http:// — set COOKIE_SECURE=true once TLS is terminated in front of the app.
- */
+/** Set COOKIE_SECURE=true behind HTTPS; browsers drop Secure cookies over plain http. */
 export function sessionCookieOptions(expires: Date) {
   return {
     httpOnly: true,
@@ -23,7 +20,7 @@ export function sessionCookieOptions(expires: Date) {
   }
 }
 
-// scrypt ships with Node — no bcrypt/argon2 native build to fight with on ARM.
+// scrypt is built into Node: no native build on ARM.
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16)
   const key = await scrypt(password, salt, 64)
@@ -35,7 +32,6 @@ export async function verifyPassword(password: string, stored: string): Promise<
   if (!saltHex || !keyHex) return false
   const key = await scrypt(password, Buffer.from(saltHex, 'hex'), 64)
   const expected = Buffer.from(keyHex, 'hex')
-  // Constant-time compare so a wrong password can't be narrowed by timing.
   return key.length === expected.length && timingSafeEqual(key, expected)
 }
 
@@ -58,7 +54,7 @@ export function destroySession(token: string) {
   db.prepare('DELETE FROM sessions WHERE token = ?').run(token)
 }
 
-/** The signed-in user, or null. Reads the httpOnly cookie — never trusts client input. */
+/** The signed-in user from the session cookie, or null. */
 export async function getUser(): Promise<SessionUser | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value
   if (!token) return null
@@ -77,10 +73,7 @@ export async function requireUser(): Promise<SessionUser> {
   return user
 }
 
-/**
- * Admin gate enforced on the server. The old Supabase version checked the role in the
- * browser and redirected, which any user could bypass by calling the API directly.
- */
+/** Server-side admin check; the pages' redirects are only for convenience. */
 export async function requireAdmin(): Promise<SessionUser> {
   const user = await requireUser()
   if (user.role !== 'admin') {
@@ -95,8 +88,7 @@ export const newId = () => randomUUID()
 export function handler(fn: () => Promise<Response>): Promise<Response> {
   return fn().catch(e => {
     if (e instanceof Response) return e
-    // Log the real error server-side; never return e.message to the client — a raw SQLite or
-    // internal message would disclose schema/query details.
+    // Log it; never send internal error details to the client.
     console.error(e)
     return Response.json({ error: 'Server error' }, { status: 500 })
   })

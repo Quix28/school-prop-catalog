@@ -1,20 +1,14 @@
 import nodemailer from 'nodemailer'
 
 /**
- * Outbound mail. Verifying that someone owns an address means actually sending to it, so
- * this is the one piece that needs a relay — the school's SMTP server, or a Gmail account
- * with an app password.
- *
- * MAIL_TRANSPORT=console prints the link to the server log instead of sending, for local
- * development. It must be set deliberately: with SMTP simply missing we fail closed, because
- * silently "verifying" without sending would defeat the entire point of this feature.
+ * Outbound mail over SMTP. MAIL_TRANSPORT=console logs links instead (dev only).
+ * Missing SMTP settings disable sign-up rather than skip confirmation.
  */
 const MODE = process.env.MAIL_TRANSPORT || 'smtp'
 
 export function mailConfigured(): boolean {
   if (MODE === 'console') {
-    // .env.example ships console mode for local work. Left on in production, every
-    // confirmation link would go to the server log and nobody could ever sign up.
+    // In production nobody would receive their links.
     if (process.env.NODE_ENV === 'production') {
       console.error('MAIL_TRANSPORT=console is not allowed in production; configure SMTP.')
       return false
@@ -31,7 +25,7 @@ function transport() {
   cached = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port,
-    secure: port === 465,          // 465 is implicit TLS; 587 upgrades with STARTTLS
+    secure: port === 465,          // 465: TLS; 587: STARTTLS
     auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
   })
   return cached
@@ -40,7 +34,7 @@ function transport() {
 const appUrl = (path: string) =>
   `${(process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '')}${path}`
 
-/** Every link opens a page that POSTs; a GET must not change anything by itself. */
+/** Links open a page that POSTs; opening a link changes nothing. */
 async function send(to: string, subject: string, link: string, action: string, note: string) {
   if (MODE === 'console') {
     console.log(`\n[mail:console] ${subject} — ${to}\n  ${link}\n`)
@@ -49,8 +43,7 @@ async function send(to: string, subject: string, link: string, action: string, n
 
   await transport().sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    // An address object, not a string: nodemailer parses a string as an address *list*, so
-    // "<x@evil.com>@school.tr" would be delivered to x@evil.com.
+    // Object, not string: nodemailer parses strings as address lists.
     to: { name: '', address: to },
     subject,
     text: `${action}:\n\n${link}\n\n${note}`,

@@ -13,8 +13,7 @@ export function POST(req: Request) {
     }
 
     const normalized = email.trim().toLowerCase()
-    // Key on IP *and* email: forwarded-for headers are spoofable if the app is reachable
-    // directly, so IP alone would be a weak throttle for password guessing.
+    // Key on IP and email; IP alone can be spoofed.
     const key = `login:${clientIp(req)}:${normalized}`
 
     const limited = rateLimit(key)
@@ -29,14 +28,12 @@ export function POST(req: Request) {
       { id: string; email: string; full_name: string | null; role: 'student' | 'admin';
         password_hash: string; verified_at: string | null } | undefined
 
-    // One generic message for "no such user" and "wrong password" — a distinct reply would
-    // let anyone enumerate which school addresses have accounts.
+    // Same error for unknown user and wrong password.
     const invalid = Response.json({ error: 'Invalid email or password' }, { status: 401 })
     if (!row) return invalid
     if (!(await verifyPassword(password, row.password_hash))) return invalid
 
-    // Checked only after the password is correct, so this cannot be used to discover which
-    // addresses have unconfirmed accounts.
+    // Only after the password check, so it reveals nothing.
     if (!row.verified_at) {
       return Response.json({
         error: 'Confirm your email address first — check your inbox for the link.',

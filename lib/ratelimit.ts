@@ -1,9 +1,6 @@
 /**
- * Minimal fixed-window rate limiter for the auth endpoints.
- *
- * ponytail: in-memory Map, so counters reset when the process restarts and are per-process.
- * That is fine for one Next server on one Pi. If this ever runs behind multiple workers or
- * needs to survive restarts, move the counters into a SQLite table keyed the same way.
+ * Fixed-window rate limiter for the auth endpoints.
+ * ponytail: in-memory, per process, reset on restart. Move to SQLite if that stops being enough.
  */
 type Entry = { count: number; resetAt: number }
 
@@ -27,20 +24,14 @@ export function rateLimit(key: string, limit = 8, windowMs = 10 * 60_000): RateL
   return { ok: true }
 }
 
-/** Called after a success so only failed attempts count toward the limit. */
+/** Call on success so only failures count. */
 export function resetLimit(key: string) {
   buckets.delete(key)
 }
 
 /**
- * Best-effort client IP. Forwarded headers are attacker-controlled unless a trusted proxy
- * sets them — if the app is reachable directly, anyone can rotate X-Forwarded-For to dodge
- * the limiter entirely. So we only read those headers when TRUST_PROXY=true (set it once a
- * reverse proxy like Caddy/nginx terminates in front). Otherwise every direct client keys to
- * the same 'unknown', which combined with the per-email key still throttles password guessing.
- *
- * The rightmost X-Forwarded-For entry is the one our own proxy appended; anything to its left
- * was sent by the client and can be forged.
+ * Client IP. Forwarded headers are trusted only with TRUST_PROXY=true, and only the rightmost
+ * entry (added by our proxy); the rest can be forged. Otherwise every client is 'unknown'.
  */
 export function clientIp(req: Request): string {
   if (process.env.TRUST_PROXY === 'true') {
@@ -52,7 +43,7 @@ export function clientIp(req: Request): string {
   return 'unknown'
 }
 
-// Keep the map from growing without bound if the process runs for months.
+// Prune expired entries hourly.
 setInterval(() => {
   const now = Date.now()
   for (const [k, v] of buckets) if (now > v.resetAt) buckets.delete(k)
