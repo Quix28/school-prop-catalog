@@ -56,10 +56,6 @@ const nextConfig: NextConfig = {
   },
   // Native module: must not be bundled.
   serverExternalPackages: ["better-sqlite3"],
-  experimental: {
-    // Live inventory: don't let the router cache serve stale pages.
-    staleTimes: { dynamic: 0, static: 0 },
-  },
 };
 
 export default nextConfig;
