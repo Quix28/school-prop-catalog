@@ -22,6 +22,7 @@ type UserRow = {
   disabled_at: string | null
   verified: 0 | 1
   reservation_count: number
+  open_count: number
 }
 
 type Status = Reservation['status']
@@ -194,18 +195,24 @@ export default function AdminPage() {
     }
   }
 
-  const userAction = async (u: UserRow, action: 'reset' | 'deactivate' | 'reactivate' | 'delete') => {
+  const userAction = async (u: UserRow, action: 'reset' | 'deactivate' | 'reactivate' | 'delete' | 'force delete') => {
     setUserMsg(null)
     if (action === 'delete' && !confirm(`Delete ${u.email}? This cannot be undone.`)) return
+    if (action === 'force delete' && !confirm(
+      `Delete ${u.email} and their ${u.reservation_count} past reservation${u.reservation_count === 1 ? '' : 's'}? This cannot be undone.`
+    )) return
     try {
       if (action === 'reset') {
         const { message } = await api.post<{ message: string }>(`/api/users/${u.id}/password-reset`)
         setUserMsg({ text: message, ok: true })
         return
       }
-      if (action === 'delete') await api.del(`/api/users/${u.id}`)
-      else await api.patch(`/api/users/${u.id}/status`, { disabled: action === 'deactivate' })
-      setUserMsg({ text: `${u.email}: ${action === 'delete' ? 'deleted' : `${action}d`}.`, ok: true })
+      if (action === 'delete' || action === 'force delete') {
+        await api.del(`/api/users/${u.id}${action === 'force delete' ? '?force=true' : ''}`)
+      } else {
+        await api.patch(`/api/users/${u.id}/status`, { disabled: action === 'deactivate' })
+      }
+      setUserMsg({ text: `${u.email}: ${action === 'reactivate' || action === 'deactivate' ? `${action}d` : 'deleted'}.`, ok: true })
       await loadData()
     } catch (e) {
       setUserMsg({ text: errorMessage(e), ok: false })
@@ -685,10 +692,16 @@ export default function AdminPage() {
                         {u.disabled_at ? 'Reactivate' : 'Deactivate'}
                       </button>
                     )}
-                    {u.role === 'student' && u.reservation_count === 0 && (
-                      <button onClick={() => userAction(u, 'delete')} className="border border-red-200 hover:bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">
-                        Delete
-                      </button>
+                    {u.role === 'student' && u.open_count === 0 && (
+                      u.reservation_count === 0 ? (
+                        <button onClick={() => userAction(u, 'delete')} className="border border-red-200 hover:bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">
+                          Delete
+                        </button>
+                      ) : (
+                        <button onClick={() => userAction(u, 'force delete')} title="Also deletes their past reservations" className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm">
+                          Force delete
+                        </button>
+                      )
                     )}
                     {u.role === 'student' ? (
                       <button
