@@ -3,9 +3,11 @@
 import { useState } from 'react'
 import { api, ApiError, errorMessage } from '@/lib/client'
 import { useRouter } from 'next/navigation'
+import { useSettings } from '@/app/settings-provider'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { site_name, allowed_email_domain } = useSettings()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [email, setEmail] = useState('')
@@ -53,7 +55,7 @@ export default function LoginPage() {
             </svg>
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Prop & Costume Catalog
+            {site_name}
           </h1>
           <p className="text-gray-600">
             Sign in to browse and reserve items
@@ -87,7 +89,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              placeholder="your.email@robcol.k12.tr"
+              placeholder={`your.email@${allowed_email_domain}`}
               className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
           </div>

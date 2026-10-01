@@ -65,3 +65,24 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
     return Response.json({ ok: true, id, role })
   })
 }
+
+/** Only students without reservation history; others should be deactivated instead. */
+export function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  return handler(async () => {
+    const admin = await requireAdmin()
+    const { id } = await params
+    const target = db.prepare('SELECT role FROM profiles WHERE id = ?').get(id) as
+      { role: string } | undefined
+    if (!target) return Response.json({ error: 'User not found' }, { status: 404 })
+    if (id === admin.id || target.role !== 'student') {
+      return Response.json({ error: 'Remove the admin role first' }, { status: 400 })
+    }
+    if (db.prepare('SELECT 1 FROM reservations WHERE user_id = ? LIMIT 1').get(id)) {
+      return Response.json(
+        { error: 'This account has reservation history. Deactivate it instead.' },
+        { status: 409 })
+    }
+    db.prepare('DELETE FROM profiles WHERE id = ?').run(id)
+    return Response.json({ ok: true })
+  })
+}

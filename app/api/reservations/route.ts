@@ -1,10 +1,7 @@
-import db, { HOLDS_DURING, today } from '@/lib/db'
+import db, { holdsDuring, today } from '@/lib/db'
 import { handler, newId, requireUser } from '@/lib/auth'
-
-/** A real YYYY-MM-DD date (Date.parse accepts 2026-02-31). */
-const isDate = (s: unknown): s is string =>
-  typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
-  && !isNaN(Date.parse(s)) && new Date(s).toISOString().startsWith(s)
+import { addDays, dayCount, isDate, plural } from '@/lib/dates'
+import { getSettings } from '@/lib/settings'
 
 /** Your reservations; admins get everyone's, with the requester's email. */
 export function GET() {
@@ -57,12 +54,37 @@ export function POST(req: Request) {
       ? Math.max(1, Math.floor(Number(body.quantity)))
       : 1
 
+    // Booking rules from Settings. Admins are exempt.
+    if (user.role !== 'admin') {
+      const s = getSettings()
+      const refuse = (error: string) => Response.json({ error }, { status: 400 })
+      if (s.min_notice_days && start < addDays(now, s.min_notice_days)) {
+        return refuse(`Book at least ${plural(s.min_notice_days, 'day')} ahead`)
+      }
+      if (s.max_reservation_days && dayCount(start, end) > s.max_reservation_days) {
+        return refuse(`A reservation can be at most ${plural(s.max_reservation_days, 'day')}`)
+      }
+      const blocked = s.blackouts.find(b => b.start <= end && b.end >= start)
+      if (blocked) {
+        return refuse(`${blocked.label || 'Those dates'} (${blocked.start} to ${blocked.end}) can't be booked`)
+      }
+      if (s.max_items_per_student) {
+        const { open } = db.prepare(`
+          SELECT COALESCE(SUM(quantity), 0) AS open FROM reservations
+           WHERE user_id = ? AND status IN ('pending','approved','checked_out')
+        `).get(user.id) as { open: number }
+        if (open + quantity > s.max_items_per_student) {
+          return refuse(`You can have at most ${plural(s.max_items_per_student, 'item')} reserved at a time`)
+        }
+      }
+    }
+
     // Units free for these dates. Synchronous check-then-insert, so no race.
     // ponytail: sums all overlapping bookings, so it can refuse too early when quantity > 1.
     // Switch to a per-day peak if that happens.
     const { held } = db.prepare(`
       SELECT COALESCE(SUM(r.quantity), 0) AS held FROM reservations r
-       WHERE r.item_id = @itemId AND ${HOLDS_DURING}
+       WHERE r.item_id = @itemId AND ${holdsDuring()}
     `).get({ itemId, start, end, today: now }) as { held: number }
     const available = item.quantity_total - held
     if (quantity > available) {

@@ -4,7 +4,9 @@ import { useState, useRef } from 'react'
 import { api, errorMessage, fromSqlTime, getCurrentUser, signOut } from '@/lib/client'
 import { useLiveData } from '@/lib/useLiveData'
 import type { Item, Reservation } from '@/lib/types'
+import { CONDITIONS, ITEM_FIELDS } from '@/lib/items'
 import { useRouter } from 'next/navigation'
+import SettingsTab from './settings-tab'
 
 type ReservationWithDetails = Reservation & {
   item_name?: string
@@ -17,17 +19,41 @@ type UserRow = {
   full_name: string | null
   role: 'student' | 'admin'
   created_at: string
+  disabled_at: string | null
+  verified: 0 | 1
   reservation_count: number
+}
+
+type Status = Reservation['status']
+
+/** Next steps an admin can take from each status. */
+const ACTIONS: Partial<Record<Status, { to: Status; label: string; color: string }[]>> = {
+  pending: [
+    { to: 'approved', label: '✓ Approve', color: 'bg-green-600 hover:bg-green-700' },
+    { to: 'rejected', label: '✗ Reject', color: 'bg-red-500 hover:bg-red-600' },
+  ],
+  approved: [{ to: 'checked_out', label: 'Mark Checked Out', color: 'bg-blue-600 hover:bg-blue-700' }],
+  checked_out: [{ to: 'returned', label: 'Mark Returned', color: 'bg-gray-600 hover:bg-gray-700' }],
+}
+
+const EMPTY_ITEM = {
+  name: '', description: '', category: 'prop' as 'prop' | 'costume', subcategory: '',
+  quantity_total: 1, condition: '', notes: '', image_url: '',
 }
 
 export default function AdminPage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'reservations' | 'items' | 'add' | 'users'>('reservations')
+  const importRef = useRef<HTMLInputElement>(null)
+  const [activeTab, setActiveTab] = useState<'reservations' | 'items' | 'add' | 'users' | 'settings'>('reservations')
   const [items, setItems] = useState<Item[]>([])
   const [reservations, setReservations] = useState<ReservationWithDetails[]>([])
   const [statusFilter, setStatusFilter] = useState<string>('pending')
+  const [resSearch, setResSearch] = useState('')
+  const [notes, setNotes] = useState<Record<string, string>>({})
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [itemMsg, setItemMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [itemSubFilter, setItemSubFilter] = useState<string>('all')
   const [itemSearch, setItemSearch] = useState('')
   const [users, setUsers] = useState<UserRow[]>([])
@@ -37,15 +63,7 @@ export default function AdminPage() {
   const [uploading, setUploading] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
   const [loadError, setLoadError] = useState('')
-  const [newItem, setNewItem] = useState({
-  name: '',
-  description: '',
-  category: 'prop' as 'prop' | 'costume',
-  subcategory: '',
-  quantity_total: 1,
-  notes: '',
-  image_url: ''
-})
+  const [newItem, setNewItem] = useState(EMPTY_ITEM)
 
   const loadData = async () => {
     try {
@@ -81,10 +99,13 @@ export default function AdminPage() {
 
   useLiveData(() => checkAdminAndLoad())
 
-  const updateReservationStatus = async (id: string, status: Reservation['status']) => {
+  const updateReservationStatus = async (id: string, status: Status) => {
+    const note = notes[id]?.trim() || undefined
     try {
-      await api.patch(`/api/reservations/${id}`, { status })
-      setReservations(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+      await api.patch(`/api/reservations/${id}`, { status, admin_notes: note })
+      setReservations(prev => prev.map(r =>
+        r.id === id ? { ...r, status, admin_notes: note ?? r.admin_notes } : r))
+      setNotes(prev => ({ ...prev, [id]: '' }))
     } catch (e) {
       // Usually a 409: reload to show the real state.
       alert(errorMessage(e))
@@ -106,19 +127,51 @@ export default function AdminPage() {
     }
   }
 
-  const handleAddItem = async () => {
+  const handleSaveItem = async () => {
     if (!newItem.name) return
     setSaveMsg('')
-    const { quantity_total, name, description, category, subcategory, notes, image_url } = newItem
     try {
-      await api.post('/api/items', {
-        name, description, category, subcategory, notes, image_url, quantity_total,
-      })
+      if (editingId) await api.patch(`/api/items/${editingId}`, newItem)
+      else await api.post('/api/items', newItem)
     } catch (e) { alert(errorMessage(e)); return }
-    setSaveMsg('Item added successfully!')
-    setNewItem({ name: '', description: '', category: 'prop', subcategory: '', quantity_total: 1, notes: '', image_url: '' })
+    setSaveMsg(editingId ? 'Changes saved.' : 'Item added successfully!')
+    const wasEditing = editingId
+    setEditingId(null)
+    setNewItem(EMPTY_ITEM)
     await loadData()
+    if (wasEditing) setActiveTab('items')
     setTimeout(() => setSaveMsg(''), 3000)
+  }
+
+  const startEdit = (item: Item) => {
+    setEditingId(item.id)
+    setNewItem({
+      name: item.name, description: item.description ?? '', category: item.category,
+      subcategory: item.subcategory ?? '', quantity_total: item.quantity_total,
+      condition: item.condition ?? '', notes: item.notes ?? '', image_url: item.image_url ?? '',
+    })
+    setSaveMsg('')
+    setActiveTab('add')
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setNewItem(EMPTY_ITEM)
+    setActiveTab('items')
+  }
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setItemMsg(null)
+    try {
+      const { imported } = await api.post<{ imported: number }>('/api/items/import', { csv: await file.text() })
+      setItemMsg({ text: `Imported ${imported} item${imported === 1 ? '' : 's'}.`, ok: true })
+      await loadData()
+    } catch (e) {
+      setItemMsg({ text: errorMessage(e), ok: false })
+    }
   }
 
   const handleDeleteItem = async (id: string) => {
@@ -141,13 +194,39 @@ export default function AdminPage() {
     }
   }
 
+  const userAction = async (u: UserRow, action: 'reset' | 'deactivate' | 'reactivate' | 'delete') => {
+    setUserMsg(null)
+    if (action === 'delete' && !confirm(`Delete ${u.email}? This cannot be undone.`)) return
+    try {
+      if (action === 'reset') {
+        const { message } = await api.post<{ message: string }>(`/api/users/${u.id}/password-reset`)
+        setUserMsg({ text: message, ok: true })
+        return
+      }
+      if (action === 'delete') await api.del(`/api/users/${u.id}`)
+      else await api.patch(`/api/users/${u.id}/status`, { disabled: action === 'deactivate' })
+      setUserMsg({ text: `${u.email}: ${action === 'delete' ? 'deleted' : `${action}d`}.`, ok: true })
+      await loadData()
+    } catch (e) {
+      setUserMsg({ text: errorMessage(e), ok: false })
+    }
+  }
+
+  const showReservationsOf = (u: UserRow) => {
+    setResSearch(u.email)
+    setStatusFilter('all')
+    setActiveTab('reservations')
+  }
+
   const handleSignOut = async () => {
     await signOut()
     router.push('/admin-login')
   }
 
+  const resQuery = resSearch.trim().toLowerCase()
   const filteredReservations = reservations.filter(r =>
-    statusFilter === 'all' ? true : r.status === statusFilter
+    (statusFilter === 'all' || r.status === statusFilter)
+    && (!resQuery || [r.user_email, r.item_name, r.purpose].some(v => v?.toLowerCase().includes(resQuery)))
   )
 
   const pendingCount = reservations.filter(r => r.status === 'pending').length
@@ -201,8 +280,9 @@ export default function AdminPage() {
         {[
           { id: 'reservations', label: `Reservations${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}` },
           { id: 'items', label: `Items (${items.length})` },
-          { id: 'add', label: '+ Add Item' },
+          { id: 'add', label: editingId ? '✎ Edit Item' : '+ Add Item' },
           { id: 'users', label: `Users (${users.length})` },
+          { id: 'settings', label: 'Settings' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -228,6 +308,14 @@ export default function AdminPage() {
         {/* ── RESERVATIONS TAB ── */}
         {activeTab === 'reservations' && (
           <div>
+            <input
+              type="search"
+              placeholder="Search by student, item or purpose..."
+              value={resSearch}
+              onChange={e => setResSearch(e.target.value)}
+              className="w-full mb-4 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+
             {/* Status filter */}
             <div className="flex gap-2 mb-5 flex-wrap">
               {['pending', 'approved', 'rejected', 'checked_out', 'returned', 'cancelled', 'all'].map(s => (
@@ -246,7 +334,7 @@ export default function AdminPage() {
             {filteredReservations.length === 0 ? (
               <div className="text-center py-20 text-gray-400">
                 <p className="text-4xl mb-3">📋</p>
-                <p>No {statusFilter} reservations</p>
+                <p>No {statusFilter === 'all' ? '' : `${statusFilter} `}reservations{resQuery ? ` matching "${resSearch}"` : ''}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -263,41 +351,33 @@ export default function AdminPage() {
                         👤 {r.user_email} · 📅 {r.start_date} → {r.end_date} · Qty: {r.quantity}
                       </p>
                       {r.purpose && <p className="text-sm text-gray-600 mt-1">Purpose: {r.purpose}</p>}
+                      {r.admin_notes && <p className="text-sm text-amber-700 mt-1">Note: {r.admin_notes}</p>}
                       <p className="text-xs text-gray-400 mt-1">
                         Requested: {fromSqlTime(r.requested_at).toLocaleDateString()}
                       </p>
                     </div>
-                    {r.status === 'pending' && (
-                      <div className="flex gap-2 shrink-0">
-                        <button
-                          onClick={() => updateReservationStatus(r.id, 'approved')}
-                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-                        >
-                          ✓ Approve
-                        </button>
-                        <button
-                          onClick={() => updateReservationStatus(r.id, 'rejected')}
-                          className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
-                        >
-                          ✗ Reject
-                        </button>
+                    {ACTIONS[r.status] && (
+                      <div className="flex flex-col gap-2 shrink-0 sm:w-72">
+                        <input
+                          type="text"
+                          value={notes[r.id] ?? ''}
+                          onChange={e => setNotes(prev => ({ ...prev, [r.id]: e.target.value }))}
+                          maxLength={500}
+                          placeholder="Note to the student (optional)"
+                          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-purple-500"
+                        />
+                        <div className="flex gap-2 justify-end">
+                          {ACTIONS[r.status]!.map(a => (
+                            <button
+                              key={a.to}
+                              onClick={() => updateReservationStatus(r.id, a.to)}
+                              className={`${a.color} text-white px-4 py-2 rounded-lg text-sm font-medium`}
+                            >
+                              {a.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    )}
-                    {r.status === 'approved' && (
-                      <button
-                        onClick={() => updateReservationStatus(r.id, 'checked_out')}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shrink-0"
-                      >
-                        Mark Checked Out
-                      </button>
-                    )}
-                    {r.status === 'checked_out' && (
-                      <button
-                        onClick={() => updateReservationStatus(r.id, 'returned')}
-                        className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium shrink-0"
-                      >
-                        Mark Returned
-                      </button>
                     )}
                   </div>
                 ))}
@@ -309,6 +389,25 @@ export default function AdminPage() {
         {/* ── ITEMS TAB ── */}
         {activeTab === 'items' && (
           <div>
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <a href="/api/items/export" download className="border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium">
+                Export CSV
+              </a>
+              <button onClick={() => importRef.current?.click()} className="border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium">
+                Import CSV
+              </button>
+              <input ref={importRef} type="file" accept=".csv,text/csv" onChange={handleImport} className="hidden" />
+              <span className="text-xs text-gray-400">
+                Columns: {ITEM_FIELDS.join(', ')}. Only name is required; rows are added as new items.
+              </span>
+            </div>
+            {itemMsg && (
+              <div className={`mb-4 p-3 rounded-lg text-sm border ${
+                itemMsg.ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'
+              }`}>
+                {itemMsg.text}
+              </div>
+            )}
             <input
               type="text"
               placeholder="Search items..."
@@ -363,12 +462,21 @@ export default function AdminPage() {
                     </span>
                   </div>
                   {item.description && <p className="text-sm text-gray-600 mt-2 line-clamp-2">{item.description}</p>}
-                  <button
-                    onClick={() => handleDeleteItem(item.id)}
-                    className="mt-3 w-full text-red-500 border border-red-200 hover:bg-red-50 py-1.5 rounded-lg text-sm transition-colors"
-                  >
-                    Delete
-                  </button>
+                  {item.condition && <p className="text-xs text-gray-400 mt-1 capitalize">Condition: {item.condition}</p>}
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => startEdit(item)}
+                      className="flex-1 text-purple-600 border border-purple-200 hover:bg-purple-50 py-1.5 rounded-lg text-sm transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteItem(item.id)}
+                      className="flex-1 text-red-500 border border-red-200 hover:bg-red-50 py-1.5 rounded-lg text-sm transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -379,7 +487,7 @@ export default function AdminPage() {
         {/* ── ADD ITEM TAB ── */}
         {activeTab === 'add' && (
           <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-sm p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-5">Add New Item</h2>
+            <h2 className="text-lg font-bold text-gray-900 mb-5">{editingId ? 'Edit Item' : 'Add New Item'}</h2>
 
             {saveMsg && (
               <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
@@ -423,16 +531,29 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Total Quantity</label>
-                <input
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Total Quantity</label>
+                  <input
                     type="number"
                     min={1}
                     value={newItem.quantity_total}
                     onChange={e => setNewItem(p => ({ ...p, quantity_total: parseInt(e.target.value) }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500"
-                />
+                  />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Condition</label>
+                  <select
+                    value={newItem.condition}
+                    onChange={e => setNewItem(p => ({ ...p, condition: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 capitalize"
+                  >
+                    <option value="">Not set</option>
+                    {CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
@@ -482,12 +603,17 @@ export default function AdminPage() {
               </div>
 
               <button
-                onClick={handleAddItem}
+                onClick={handleSaveItem}
                 disabled={!newItem.name || uploading}
                 className="w-full bg-purple-600 text-white py-3 rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                Add Item to Catalog
+                {editingId ? 'Save Changes' : 'Add Item to Catalog'}
               </button>
+              {editingId && (
+                <button onClick={cancelEdit} className="w-full text-sm text-gray-500 hover:text-gray-800">
+                  Cancel editing
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -532,6 +658,8 @@ export default function AdminPage() {
                       }`}>
                         {u.role}
                       </span>
+                      {!u.verified && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-yellow-100 text-yellow-800">unconfirmed</span>}
+                      {u.disabled_at && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-700">deactivated</span>}
                       {u.id === me && <span className="text-xs text-gray-400">(you)</span>}
                     </div>
                     <p className="text-sm text-gray-500 truncate">{u.email}</p>
@@ -540,7 +668,28 @@ export default function AdminPage() {
                     </p>
                   </div>
 
-                  <div className="shrink-0">
+                  <div className="shrink-0 flex flex-wrap gap-2 justify-end">
+                    <button onClick={() => showReservationsOf(u)} className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm">
+                      Reservations
+                    </button>
+                    {u.verified === 1 && !u.disabled_at && (
+                      <button onClick={() => userAction(u, 'reset')} className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm">
+                        Send reset link
+                      </button>
+                    )}
+                    {u.role === 'student' && (
+                      <button
+                        onClick={() => userAction(u, u.disabled_at ? 'reactivate' : 'deactivate')}
+                        className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm"
+                      >
+                        {u.disabled_at ? 'Reactivate' : 'Deactivate'}
+                      </button>
+                    )}
+                    {u.role === 'student' && u.reservation_count === 0 && (
+                      <button onClick={() => userAction(u, 'delete')} className="border border-red-200 hover:bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">
+                        Delete
+                      </button>
+                    )}
                     {u.role === 'student' ? (
                       <button
                         onClick={() => changeRole(u, 'admin')}
@@ -564,6 +713,8 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+        {activeTab === 'settings' && <SettingsTab />}
       </div>
     </div>
   )

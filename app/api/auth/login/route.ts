@@ -23,10 +23,10 @@ export function POST(req: Request) {
     }
 
     const row = db.prepare(
-      'SELECT id, email, full_name, role, password_hash, verified_at FROM profiles WHERE email = ?'
+      'SELECT id, email, full_name, role, password_hash, verified_at, disabled_at FROM profiles WHERE email = ?'
     ).get(normalized) as
       { id: string; email: string; full_name: string | null; role: 'student' | 'admin';
-        password_hash: string; verified_at: string | null } | undefined
+        password_hash: string; verified_at: string | null; disabled_at: string | null } | undefined
 
     // Same error for unknown user and wrong password.
     const invalid = Response.json({ error: 'Invalid email or password' }, { status: 401 })
@@ -39,6 +39,10 @@ export function POST(req: Request) {
         error: 'Confirm your email address first — check your inbox for the link.',
         unverified: true,
       }, { status: 403 })
+    }
+
+    if (row.disabled_at) {
+      return Response.json({ error: 'This account has been deactivated. Contact an admin.' }, { status: 403 })
     }
 
     resetLimit(key)

@@ -1,5 +1,6 @@
-import db, { HOLDS_DURING, today } from '@/lib/db'
+import db, { holdsDuring, today } from '@/lib/db'
 import { handler, newId, requireAdmin, requireUser } from '@/lib/auth'
+import { INSERT_ITEM_SQL, parseItemInput } from '@/lib/items'
 import type { Item } from '@/lib/types'
 
 type ItemRow = Omit<Item, 'additional_images'> & { additional_images: string | null; held: number }
@@ -22,7 +23,7 @@ export function GET() {
     const rows = db.prepare(`
       SELECT i.*,
              COALESCE((SELECT SUM(r.quantity) FROM reservations r
-                        WHERE r.item_id = i.id AND ${HOLDS_DURING}), 0) AS held
+                        WHERE r.item_id = i.id AND ${holdsDuring()}), 0) AS held
         FROM items i
        WHERE i.deleted_at IS NULL
        ORDER BY i.name
@@ -34,32 +35,11 @@ export function GET() {
 export function POST(req: Request) {
   return handler(async () => {
     const admin = await requireAdmin()
-    const body = await req.json().catch(() => ({}))
-
-    const name = typeof body.name === 'string' ? body.name.trim() : ''
-    if (!name) return Response.json({ error: 'Name is required' }, { status: 400 })
-
-    const category = body.category === 'costume' ? 'costume' : 'prop'
-    // Reject NaN and negatives.
-    const total = Number.isFinite(Number(body.quantity_total))
-      ? Math.max(1, Math.floor(Number(body.quantity_total)))
-      : 1
+    const parsed = parseItemInput(await req.json().catch(() => ({})))
+    if ('error' in parsed) return Response.json({ error: parsed.error }, { status: 400 })
 
     const id = newId()
-    db.prepare(`
-      INSERT INTO items (id, name, description, category, subcategory,
-                         quantity_total, quantity_available, image_url, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, name,
-      body.description?.trim() || null,
-      category,
-      body.subcategory?.trim() || null,
-      total, total,
-      body.image_url?.trim() || null,
-      body.notes?.trim() || null,
-      admin.id,
-    )
+    db.prepare(INSERT_ITEM_SQL).run({ ...parsed.item, id, created_by: admin.id })
 
     const row = db.prepare('SELECT *, 0 AS held FROM items WHERE id = ?').get(id) as ItemRow
     return Response.json({ item: toItem(row) }, { status: 201 })

@@ -14,7 +14,7 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
   return handler(async () => {
     const user = await requireUser()
     const { id } = await params
-    const { status } = await req.json().catch(() => ({}))
+    const { status, admin_notes } = await req.json().catch(() => ({}))
 
     const from = typeof status === 'string' ? ALLOWED_FROM[status] : undefined
     if (!from) return Response.json({ error: 'Unknown status' }, { status: 400 })
@@ -32,16 +32,21 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
       return Response.json({ error: 'Admins only' }, { status: 403 })
     }
 
+    // Optional note to the student; blank keeps the existing one.
+    const note = user.role === 'admin' && typeof admin_notes === 'string' && admin_notes.trim()
+      ? admin_notes.trim().slice(0, 500) : null
+
     // Each step sets only its own timestamp.
     const info = db.prepare(`
       UPDATE reservations
          SET status = @status,
+             admin_notes    = COALESCE(@note, admin_notes),
              reviewed_at    = CASE WHEN @status IN ('approved','rejected') THEN datetime('now') ELSE reviewed_at END,
              reviewed_by    = CASE WHEN @status IN ('approved','rejected') THEN @by ELSE reviewed_by END,
              checked_out_at = CASE WHEN @status = 'checked_out' THEN datetime('now') ELSE checked_out_at END,
              returned_at    = CASE WHEN @status = 'returned' THEN datetime('now') ELSE returned_at END
        WHERE id = @id AND status IN (SELECT value FROM json_each(@from))
-    `).run({ status, by: user.id, id, from: JSON.stringify(from) })
+    `).run({ status, by: user.id, id, from: JSON.stringify(from), note })
 
     if (info.changes === 0) {
       return Response.json(

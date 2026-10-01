@@ -3,9 +3,11 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { api, ApiError, errorMessage } from '@/lib/client'
+import { useSettings } from '@/app/settings-provider'
 
 /** No token: request a link. With a token: set the new password. */
 function ResetPassword() {
+  const { allowed_email_domain } = useSettings()
   const token = useSearchParams().get('token') || ''
   const [state, setState] = useState<'form' | 'done' | 'invalid'>('form')
   const [email, setEmail] = useState('')
@@ -98,7 +100,7 @@ function ResetPassword() {
       </p>
       {errorBox}
       <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-        placeholder="you@robcol.k12.tr" className={input} />
+        placeholder={`you@${allowed_email_domain}`} className={input} />
       <button type="submit" disabled={busy || !email} className={button}>
         {busy ? 'Sending…' : 'Send reset link'}
       </button>

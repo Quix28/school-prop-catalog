@@ -3,10 +3,12 @@
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { api, ApiError, errorMessage } from '@/lib/client'
+import { useSettings } from '@/app/settings-provider'
 
 /** Confirms with the sign-up password; loading the page alone changes nothing. */
 function VerifyResult() {
   const router = useRouter()
+  const { allowed_email_domain } = useSettings()
   const token = useSearchParams().get('token') || ''
   const [state, setState] = useState<'confirm' | 'ok' | 'invalid'>(token ? 'confirm' : 'invalid')
   const [password, setPassword] = useState('')
@@ -109,7 +111,7 @@ function VerifyResult() {
         type="email"
         value={email}
         onChange={e => setEmail(e.target.value)}
-        placeholder="you@robcol.k12.tr"
+        placeholder={`you@${allowed_email_domain}`}
         className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-3 focus:ring-2 focus:ring-indigo-500"
       />
       <button

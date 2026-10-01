@@ -61,7 +61,7 @@ export async function getUser(): Promise<SessionUser | null> {
   const row = db.prepare(`
     SELECT p.id, p.email, p.full_name, p.role
       FROM sessions s JOIN profiles p ON p.id = s.user_id
-     WHERE s.token = ? AND s.expires_at > datetime('now')
+     WHERE s.token = ? AND s.expires_at > datetime('now') AND p.disabled_at IS NULL
   `).get(token) as SessionUser | undefined
   return row ?? null
 }

@@ -21,7 +21,7 @@ export function POST(req: Request) {
       return Response.json({ error: 'The server cannot send email right now.' }, { status: 503 })
     }
 
-    const row = db.prepare('SELECT id FROM profiles WHERE email = ? AND verified_at IS NOT NULL')
+    const row = db.prepare('SELECT id FROM profiles WHERE email = ? AND verified_at IS NOT NULL AND disabled_at IS NULL')
       .get(normalized) as { id: string } | undefined
 
     // Not awaited and same reply either way, so timing reveals nothing. Unconfirmed accounts

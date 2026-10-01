@@ -2,8 +2,10 @@
 
 import { useState } from 'react'
 import { api, errorMessage } from '@/lib/client'
+import { useSettings } from '@/app/settings-provider'
 
 export default function SignupPage() {
+  const { allowed_email_domain } = useSettings()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -111,7 +113,7 @@ export default function SignupPage() {
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               required
-              placeholder="your.email@robcol.k12.tr"
+              placeholder={`your.email@${allowed_email_domain}`}
               className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
           </div>

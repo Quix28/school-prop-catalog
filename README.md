@@ -76,6 +76,28 @@ password, the owner's click can never activate the stranger's password.
 settings. The link expires after an hour, works once, and signs the account out everywhere.
 Only confirmed accounts get one; an unconfirmed sign-up is fixed by signing up again.
 
+## Admin panel
+
+Everything day to day is done in `/admin`, no code or shell needed:
+
+- **Items:** add, edit (including condition and photo), delete. Quantity can't go below what is
+  booked on the busiest upcoming day.
+- **CSV:** *Export CSV* downloads every item; *Import CSV* adds rows as new items. Columns:
+  `name` (required), `description`, `category` (prop/costume), `subcategory`, `quantity_total`,
+  `condition` (excellent/good/fair/poor), `notes`, `image_url`. Comma or semicolon separated. If any
+  row is invalid, nothing is imported.
+- **Reservations:** approve, reject, check out, return, each with an optional note to the student.
+  Search by student, item or purpose.
+- **Users:** send a password-reset link, deactivate or reactivate, delete (students with no
+  reservations only), view someone's reservations. Remove an admin role before any of these.
+- **Settings:** site name, allowed email domain (overrides `ALLOWED_EMAIL_DOMAIN`), an
+  announcement shown on every page, and student booking rules: maximum length, minimum notice,
+  maximum items at once, blocked date ranges. Admins are exempt from the rules.
+- **Backup:** downloads the database. It includes password hashes, so keep it private; photos
+  are not included (see *Backups* below).
+
+Secrets (SMTP, `ADMIN_PROMOTE_CODE`) stay in `.env.local` on purpose.
+
 ## Deploying to a Raspberry Pi 4
 
 ### 1. Build somewhere other than the Pi

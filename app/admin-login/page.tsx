@@ -3,9 +3,11 @@
 import { useState } from 'react'
 import { api, errorMessage } from '@/lib/client'
 import { useRouter } from 'next/navigation'
+import { useSettings } from '@/app/settings-provider'
 
 export default function AdminLoginPage() {
   const router = useRouter()
+  const { allowed_email_domain } = useSettings()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [email, setEmail] = useState('')
@@ -66,7 +68,7 @@ export default function AdminLoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              placeholder="admin@robcol.k12.tr"
+              placeholder={`admin@${allowed_email_domain}`}
               className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
           </div>

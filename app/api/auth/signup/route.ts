@@ -2,12 +2,8 @@ import db from '@/lib/db'
 import { handler, hashPassword, MIN_PASSWORD_LENGTH, newId } from '@/lib/auth'
 import { clientIp, rateLimit } from '@/lib/ratelimit'
 import { mailConfigured, sendVerificationEmail } from '@/lib/mail'
+import { getSettings } from '@/lib/settings'
 import { issueVerificationToken } from '@/lib/verification'
-
-// Enforced on the server; the form's checks can be bypassed.
-const ALLOWED_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || 'robcol.k12.tr'
-// Whole-address match: endsWith accepted "<x@evil.com>@school.tr".
-const EMAIL_RE = new RegExp(`^[a-z0-9._%+-]+@${ALLOWED_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
 
 const tooMany = (retryAfterSeconds: number) =>
   Response.json({ error: 'Too many sign-up attempts. Try again later.' },
@@ -27,9 +23,12 @@ export function POST(req: Request) {
       return Response.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
+    // Whole-address match: endsWith accepted "<x@evil.com>@school.tr". The domain is set in
+    // Settings and validated there, so it only needs its dots escaped.
+    const domain = getSettings().allowed_email_domain
     const normalized = email.trim().toLowerCase()
-    if (!EMAIL_RE.test(normalized)) {
-      return Response.json({ error: `Only @${ALLOWED_DOMAIN} email addresses can register` },
+    if (!new RegExp(`^[a-z0-9._%+-]+@${domain.replace(/\./g, '\\.')}$`).test(normalized)) {
+      return Response.json({ error: `Only @${domain} email addresses can register` },
         { status: 403 })
     }
     if (password.length < MIN_PASSWORD_LENGTH) {

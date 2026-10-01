@@ -5,9 +5,12 @@ import { api, errorMessage, getCurrentUser, localToday, signOut, type SessionUse
 import { useLiveData } from '@/lib/useLiveData'
 import type { Item } from '@/lib/types'
 import { useRouter } from 'next/navigation'
+import { addDays, plural } from '@/lib/dates'
+import { useSettings } from '@/app/settings-provider'
 
 export default function CatalogPage() {
   const router = useRouter()
+  const settings = useSettings()
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<SessionUser | null>(null)
@@ -86,6 +89,17 @@ export default function CatalogPage() {
     setSelectedSubcategory('all')
   }
 
+  // The server enforces these; shown here so students know before they submit.
+  const earliest = addDays(localToday(), settings.min_notice_days)
+  const latestEnd = reservationForm.start_date && settings.max_reservation_days
+    ? addDays(reservationForm.start_date, settings.max_reservation_days - 1) : undefined
+  const rules = [
+    settings.min_notice_days > 0 && `Book at least ${plural(settings.min_notice_days, 'day')} ahead`,
+    settings.max_reservation_days > 0 && `At most ${plural(settings.max_reservation_days, 'day')}`,
+    settings.max_items_per_student > 0 && `Up to ${plural(settings.max_items_per_student, 'item')} at a time`,
+    ...settings.blackouts.map(b => `Not bookable ${b.start} to ${b.end}${b.label ? ` (${b.label})` : ''}`),
+  ].filter(Boolean)
+
   const filtered = items.filter(item => {
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory
     const matchesSubcategory = selectedSubcategory === 'all'
@@ -107,7 +121,7 @@ export default function CatalogPage() {
       {/* Header */}
       <header className="bg-indigo-600 text-white px-6 py-4 flex justify-between items-center shadow">
       <div>
-        <h1 className="text-xl font-bold">🎭 Prop & Costume Catalog</h1>
+        <h1 className="text-xl font-bold">🎭 {settings.site_name}</h1>
         <p className="text-indigo-200 text-sm">{user?.email}</p>
       </div>
       <div className="flex gap-2">
@@ -268,7 +282,7 @@ export default function CatalogPage() {
                     type="date"
                     value={reservationForm.start_date}
                     onChange={e => setReservationForm(f => ({ ...f, start_date: e.target.value }))}
-                    min={localToday()}
+                    min={earliest}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 </div>
@@ -278,11 +292,18 @@ export default function CatalogPage() {
                     type="date"
                     value={reservationForm.end_date}
                     onChange={e => setReservationForm(f => ({ ...f, end_date: e.target.value }))}
-                    min={reservationForm.start_date || localToday()}
+                    min={reservationForm.start_date || earliest}
+                    max={latestEnd}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 </div>
               </div>
+
+              {rules.length > 0 && (
+                <ul className="text-xs text-gray-500 list-disc pl-4 space-y-0.5">
+                  {rules.map(r => <li key={r as string}>{r}</li>)}
+                </ul>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

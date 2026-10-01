@@ -29,6 +29,8 @@ db.exec(`
     -- Pending password reset.
     reset_token_hash   TEXT,
     reset_expires_at   TEXT,
+    -- Deactivated accounts can't sign in.
+    disabled_at        TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -70,6 +72,12 @@ db.exec(`
     returned_at     TEXT
   );
 
+  -- Admin-editable settings, JSON-encoded values.
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS sessions (
     token      TEXT PRIMARY KEY,
     user_id    TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -90,6 +98,7 @@ db.transaction(() => {
     ['profiles', 'verify_expires_at'],
     ['profiles', 'reset_token_hash'],
     ['profiles', 'reset_expires_at'],
+    ['profiles', 'disabled_at'],
     ['items', 'deleted_at'],
   ] as const) {
     const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
@@ -134,11 +143,14 @@ export const today = () =>
 /** A Date in SQLite datetime('now') format, so text comparisons work. */
 export const sqlTime = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ')
 
-/** SQL: reservation `r` holds units during [@start, @end]. Overdue checkouts hold through today. */
-export const HOLDS_DURING = `
+/**
+ * SQL: reservation `r` holds units during [start, end], given as SQL expressions (needs @today).
+ * Overdue checkouts hold through today.
+ */
+export const holdsDuring = (start = '@start', end = '@end') => `
   r.status IN ('pending','approved','checked_out')
-  AND r.start_date <= @end
-  AND (CASE WHEN r.status = 'checked_out' THEN max(r.end_date, @today) ELSE r.end_date END) >= @start
+  AND r.start_date <= ${end}
+  AND (CASE WHEN r.status = 'checked_out' THEN max(r.end_date, @today) ELSE r.end_date END) >= ${start}
 `
 
 export default db
