@@ -104,7 +104,7 @@ export default function AdminLoginPage() {
 
         {/* Back link */}
         <div className="mt-6 space-y-3 text-center">
-          <a href="/reset-password" className="block text-sm text-gray-600 hover:text-gray-900">
+          <a href="/reset-password" className="block text-sm text-blue-600 hover:text-blue-700">
             Forgot your password?
           </a>
           <a href="/login" className="text-sm text-purple-600 hover:text-purple-700 font-medium">

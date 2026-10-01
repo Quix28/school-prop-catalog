@@ -127,12 +127,12 @@ export default function LoginPage() {
 
         {/* Links */}
         <div className="mt-6 space-y-3 text-center">
-          <a href="/reset-password" className="block text-sm text-gray-600 hover:text-gray-900">
+          <a href="/reset-password" className="block text-sm text-blue-600 hover:text-blue-700">
             Forgot your password?
           </a>
           <a
             href="/signup"
-            className="block text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            className="block text-sm text-blue-600 hover:text-blue-700 font-medium"
           >
             Don&apos;t have an account? Sign up
           </a>
@@ -140,7 +140,7 @@ export default function LoginPage() {
           <div className="pt-4 border-t border-gray-200">
             <a
               href="/admin-login"
-              className="text-sm text-gray-600 hover:text-gray-900"
+              className="text-sm text-purple-600 hover:text-purple-700 font-medium"
             >
               Admin Login →
             </a>
