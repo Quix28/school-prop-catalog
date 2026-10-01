@@ -3,7 +3,10 @@ import { handler, newId, requireUser } from '@/lib/auth'
 import { addDays, dayCount, isDate, plural } from '@/lib/dates'
 import { getSettings } from '@/lib/settings'
 
-/** Your reservations; admins get everyone's, with the requester's email. */
+/**
+ * Your reservations; admins get everyone's, with the requester's email. LEFT JOINs so a
+ * reservation whose item or account was deleted outside the app still shows up.
+ */
 export function GET() {
   return handler(async () => {
     const user = await requireUser()
@@ -12,14 +15,14 @@ export function GET() {
       ? db.prepare(`
           SELECT r.*, i.name AS item_name, i.image_url AS item_image, p.email AS user_email
             FROM reservations r
-            JOIN items i    ON i.id = r.item_id
-            JOIN profiles p ON p.id = r.user_id
+            LEFT JOIN items i    ON i.id = r.item_id
+            LEFT JOIN profiles p ON p.id = r.user_id
            ORDER BY r.requested_at DESC
         `).all()
       : db.prepare(`
           SELECT r.*, i.name AS item_name, i.image_url AS item_image
             FROM reservations r
-            JOIN items i ON i.id = r.item_id
+            LEFT JOIN items i ON i.id = r.item_id
            WHERE r.user_id = ?
            ORDER BY r.requested_at DESC
         `).all(user.id)
