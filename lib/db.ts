@@ -8,9 +8,13 @@ import { join } from 'node:path'
 export const DATA_DIR = process.env.DATA_DIR || join(/* turbopackIgnore: true */ process.cwd(), 'data')
 export const UPLOAD_DIR = join(/* turbopackIgnore: true */ DATA_DIR, 'uploads')
 
-mkdirSync(UPLOAD_DIR, { recursive: true })
+// next build loads this module in several workers at once, and setting up a new database file
+// from parallel processes can fail with SQLITE_BUSY. The build only needs the schema, so it
+// gets an in-memory database and never touches DATA_DIR.
+const building = process.env.NEXT_PHASE === 'phase-production-build'
+if (!building) mkdirSync(UPLOAD_DIR, { recursive: true })
 
-const db = new Database(join(DATA_DIR, 'catalog.db'))
+const db = new Database(building ? ':memory:' : join(DATA_DIR, 'catalog.db'))
 
 // WAL: reads don't wait for writes.
 db.pragma('journal_mode = WAL')
@@ -90,8 +94,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_items_name ON items(name);
 `)
 
-// Add columns missing from older databases. IMMEDIATE locks first, since next build
-// runs this in several processes at once.
+// Add columns missing from older databases. IMMEDIATE takes the write lock up front.
 db.transaction(() => {
   for (const [table, col] of [
     ['profiles', 'verified_at'],
@@ -124,7 +127,7 @@ db.prepare(`
 
 // Delete day-old uploads no item uses (abandoned Add Item forms). Production server only,
 // never during build or dev.
-if (process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-production-build') {
+if (process.env.NODE_ENV === 'production' && !building) {
   const refs = (db.prepare('SELECT image_url, additional_images FROM items').all() as
     { image_url: string | null; additional_images: string | null }[])
     .map(r => `${r.image_url} ${r.additional_images}`).join(' ')

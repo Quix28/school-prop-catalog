@@ -29,8 +29,8 @@ SQLite database and photos on disk, and needs no outside service except an SMTP 
 ## Install and build
 
 This guide uses `/srv/prop-catalog`, which is the path `deploy/prop-catalog.service` expects.
-Clone, build and run the app as the same non-root account. The build and the admin script open
-the database too, so a single owner avoids permission problems.
+Clone, build and run the app as the same non-root account. The service runs the build output
+and the admin script writes to the database, so a single owner avoids permission problems.
 
 ```sh
 sudo mkdir -p /srv/prop-catalog
@@ -282,8 +282,7 @@ Errors such as `SQLITE_CANTOPEN`, `SQLITE_READONLY`, `attempt to write a readonl
   write access to the folder itself. Fix ownership with `sudo chown -R <user>: <DATA_DIR>`.
 - Files copied with `sudo`, or a database created by running `npm run create-admin` as root,
   belong to root. Run the `chown` again.
-- `npm run build` and `npm run create-admin` also open the database. Run them as the service
-  account.
+- `npm run create-admin` also writes to the database. Run it as the service account.
 - If `DATA_DIR` is under `/home` or another protected path, add it to `ReadWritePaths=` in the
   unit, then run `sudo systemctl daemon-reload` and `sudo systemctl restart prop-catalog`.
 
