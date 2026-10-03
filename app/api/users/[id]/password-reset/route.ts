@@ -1,14 +1,16 @@
 import db from '@/lib/db'
-import { handler, requireAdmin } from '@/lib/auth'
+import { handler, requireAdmin, requireAdminCode } from '@/lib/auth'
 import { rateLimit } from '@/lib/ratelimit'
 import { mailConfigured, sendPasswordResetEmail } from '@/lib/mail'
 import { issueResetToken } from '@/lib/verification'
 
 /** Emails the user a reset link. The admin never sees or sets the password. */
-export function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handler(async () => {
-    await requireAdmin()
+    const admin = await requireAdmin()
     const { id } = await params
+    const { code } = await req.json().catch(() => ({}))
+    requireAdminCode(req, admin.id, code)
     const user = db.prepare(`
       SELECT email FROM profiles WHERE id = ? AND verified_at IS NOT NULL AND disabled_at IS NULL
     `).get(id) as { email: string } | undefined

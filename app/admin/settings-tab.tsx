@@ -20,6 +20,7 @@ export default function SettingsTab() {
   const [form, setForm] = useState({ ...current, blackouts: blackoutsToText(current.blackouts) })
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [code, setCode] = useState('')
   const set = (key: keyof typeof form) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm(f => ({ ...f, [key]: e.target.value }))
 
@@ -35,7 +36,7 @@ export default function SettingsTab() {
     }
     setSaving(true)
     try {
-      await api.put('/api/settings', { ...form, blackouts })
+      await api.put('/api/settings', { ...form, blackouts, code })
       setMsg({ text: 'Settings saved.', ok: true })
       router.refresh()
     } catch (e) {
@@ -97,6 +98,12 @@ export default function SettingsTab() {
             {msg.text}
           </div>
         )}
+
+        <div>
+          <label className={label}>Confirmation code</label>
+          <input type="password" autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value)} required
+            placeholder="Required to save settings" className={input} />
+        </div>
 
         <button type="submit" disabled={saving}
           className="w-full bg-purple-600 text-white py-3 rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50">

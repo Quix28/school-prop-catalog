@@ -2,6 +2,7 @@ import { randomBytes, randomUUID, scrypt as _scrypt, timingSafeEqual } from 'nod
 import { promisify } from 'node:util'
 import { cookies } from 'next/headers'
 import db, { sqlTime } from './db'
+import { clientIp, rateLimit, resetLimit } from './ratelimit'
 
 const scrypt = promisify(_scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>
 
@@ -80,6 +81,32 @@ export async function requireAdmin(): Promise<SessionUser> {
     throw new Response(JSON.stringify({ error: 'Admins only' }), { status: 403 })
   }
   return user
+}
+
+/**
+ * Settings and every action on a user account also need ADMIN_PROMOTE_CODE, so an unattended
+ * admin session is not enough. Unset means those actions are disabled.
+ */
+export function requireAdminCode(req: Request, adminId: string, code: unknown) {
+  // Throttle guesses; only wrong codes count.
+  const key = `admin-code:${clientIp(req)}:${adminId}`
+  const limited = rateLimit(key, 5, 10 * 60_000)
+  if (!limited.ok) {
+    throw Response.json({ error: 'Too many incorrect codes. Try again later.' },
+      { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } })
+  }
+  const expected = process.env.ADMIN_PROMOTE_CODE
+  if (!expected) {
+    throw Response.json(
+      { error: 'Disabled: ADMIN_PROMOTE_CODE is not set on the server.' }, { status: 503 })
+  }
+  const a = Buffer.from(typeof code === 'string' ? code : '')
+  const b = Buffer.from(expected)
+  // timingSafeEqual throws on different lengths.
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    throw Response.json({ error: 'Incorrect confirmation code' }, { status: 403 })
+  }
+  resetLimit(key)
 }
 
 export const newId = () => randomUUID()

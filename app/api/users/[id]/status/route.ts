@@ -1,15 +1,16 @@
 import db from '@/lib/db'
-import { handler, requireAdmin } from '@/lib/auth'
+import { handler, requireAdmin, requireAdminCode } from '@/lib/auth'
 
 /** Deactivates or reactivates a student. Deactivating also signs them out. */
 export function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handler(async () => {
     const admin = await requireAdmin()
     const { id } = await params
-    const { disabled } = await req.json().catch(() => ({}))
+    const { disabled, code } = await req.json().catch(() => ({}))
     if (typeof disabled !== 'boolean') {
       return Response.json({ error: 'disabled must be true or false' }, { status: 400 })
     }
+    requireAdminCode(req, admin.id, code)
 
     const target = db.prepare('SELECT role FROM profiles WHERE id = ?').get(id) as
       { role: string } | undefined

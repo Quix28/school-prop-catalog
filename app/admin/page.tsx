@@ -199,20 +199,24 @@ export default function AdminPage() {
 
   const userAction = async (u: UserRow, action: 'reset' | 'deactivate' | 'reactivate' | 'delete' | 'force delete') => {
     setUserMsg(null)
+    if (!promoteCode) {
+      setUserMsg({ text: 'Enter the confirmation code first.', ok: false })
+      return
+    }
     if (action === 'delete' && !confirm(`Delete ${u.email}? This cannot be undone.`)) return
     if (action === 'force delete' && !confirm(
       `Delete ${u.email} and their ${u.reservation_count} past reservation${u.reservation_count === 1 ? '' : 's'}? This cannot be undone.`
     )) return
     try {
       if (action === 'reset') {
-        const { message } = await api.post<{ message: string }>(`/api/users/${u.id}/password-reset`)
+        const { message } = await api.post<{ message: string }>(`/api/users/${u.id}/password-reset`, { code: promoteCode })
         setUserMsg({ text: message, ok: true })
         return
       }
       if (action === 'delete' || action === 'force delete') {
-        await api.del(`/api/users/${u.id}${action === 'force delete' ? '?force=true' : ''}`)
+        await api.del(`/api/users/${u.id}${action === 'force delete' ? '?force=true' : ''}`, { code: promoteCode })
       } else {
-        await api.patch(`/api/users/${u.id}/status`, { disabled: action === 'deactivate' })
+        await api.patch(`/api/users/${u.id}/status`, { disabled: action === 'deactivate', code: promoteCode })
       }
       setUserMsg({ text: `${u.email}: ${action === 'reactivate' || action === 'deactivate' ? `${action}d` : 'deleted'}.`, ok: true })
       await loadData()
@@ -644,13 +648,14 @@ export default function AdminPage() {
               </label>
               <input
                 type="password"
+                autoComplete="one-time-code"
                 value={promoteCode}
                 onChange={e => setPromoteCode(e.target.value)}
-                placeholder="Required to change any role"
+                placeholder="Required for every action on this page"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500"
               />
               <p className="text-xs text-gray-400 mt-2">
-                Verified on the server. Roles cannot be changed without it.
+                Verified on the server: roles, reset links, deactivation and deletion all need it.
               </p>
             </div>
 
