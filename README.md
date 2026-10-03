@@ -7,9 +7,6 @@ SQLite database and photos on disk, and needs no outside service except an SMTP 
 
 ## Requirements
 
-- A Linux server that you can reach from the internet on ports 80 and 443, and a domain name you
-  control. Any distribution works. A Raspberry Pi 4 or 5 with a 64-bit OS is also fine; if you
-  use one, put `DATA_DIR` on a USB SSD, because SQLite writes wear out SD cards.
 - Node.js 20.9 or newer, as required by Next.js 16. The repository does not pin a version; this
   guide was verified with Node 24.13.1 (`node -v`). Install it so that `node` is at
   `/usr/bin/node` (the NodeSource packages do this), or adjust `ExecStart` in the service file.
@@ -21,8 +18,7 @@ SQLite database and photos on disk, and needs no outside service except an SMTP 
   sudo apt install -y build-essential python3 git sqlite3
   ```
 
-- Memory: `npm run build` can use more than 4 GB of RAM. On a machine with 4 GB or less, add at
-  least 2 GB of swap before building.
+- Memory: `npm run build` can use about 4 GB of RAM.
 - [Caddy](https://caddyserver.com/docs/install) as the HTTPS reverse proxy (see
   [Domain and HTTPS](#domain-and-https)).
 
@@ -73,21 +69,18 @@ Never put a `# comment` on the same line as a value: systemd keeps it as part of
 | `SMTP_PASS` | Password for that login. | The mailbox password, or an app password if the provider requires one |
 | `SMTP_FROM` | Sender name and address on outgoing email. | `"Prop Catalog <props@<school domain>>"`, using an address the mailbox is allowed to send as |
 
-Points to get right:
+Important Points:
 
 - `ADMIN_PROMOTE_CODE` must be set, or admins cannot change settings or manage users. Give the
   code to the admins in person. It is never shown in the app.
 - `APP_URL=https://<your domain>`. Students get their confirmation links from it, so a wrong
   value breaks sign-up.
 - `COOKIE_SECURE=true` and `TRUST_PROXY=true` once Caddy serves the site over HTTPS.
-- Send mail through a school-owned account, not a personal one. Students are asked to click
-  links in these emails, and mail from a personal address looks like phishing.
 - The service file sets `HOSTNAME=127.0.0.1`, so Next.js listens on localhost only and nobody
   can bypass Caddy to forge the `X-Forwarded-For` header. Keep it that way while
   `TRUST_PROXY=true`.
 
-Check the mail settings before going live. The script reads `.env.local` from the current
-directory and prints the exact SMTP error if sending fails:
+The script reads `.env.local` from the current directory and prints the exact SMTP error if sending fails:
 
 ```sh
 cd /srv/prop-catalog
