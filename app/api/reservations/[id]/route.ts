@@ -1,5 +1,6 @@
 import db from '@/lib/db'
 import { handler, requireUser } from '@/lib/auth'
+import { mailConfigured, sendReservationEmail } from '@/lib/mail'
 
 /** Valid previous states for each status, enforced in the UPDATE itself. */
 const ALLOWED_FROM: Record<string, string[]> = {
@@ -19,8 +20,15 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
     const from = typeof status === 'string' ? ALLOWED_FROM[status] : undefined
     if (!from) return Response.json({ error: 'Unknown status' }, { status: 400 })
 
-    const row = db.prepare('SELECT user_id FROM reservations WHERE id = ?').get(id) as
-      { user_id: string } | undefined
+    const row = db.prepare(`
+      SELECT r.user_id, r.start_date, r.end_date, p.email, i.name AS item_name
+        FROM reservations r
+        LEFT JOIN profiles p ON p.id = r.user_id
+        LEFT JOIN items i ON i.id = r.item_id
+       WHERE r.id = ?
+    `).get(id) as {
+      user_id: string; start_date: string; end_date: string; email: string | null; item_name: string | null
+    } | undefined
     if (!row) return Response.json({ error: 'Reservation not found' }, { status: 404 })
 
     // Students may only cancel their own; everything else is admin-only.
@@ -52,6 +60,13 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
       return Response.json(
         { error: 'This reservation has already changed. Refresh to see its current status.' },
         { status: 409 })
+    }
+
+    // Tell the student when someone else changed it. A mail failure must not undo the change.
+    if (row.email && row.user_id !== user.id && mailConfigured()) {
+      sendReservationEmail(row.email, {
+        item: row.item_name ?? 'your item', status, start: row.start_date, end: row.end_date, note,
+      }).catch(e => console.error('Reservation email failed:', e))
     }
     return Response.json({ ok: true })
   })

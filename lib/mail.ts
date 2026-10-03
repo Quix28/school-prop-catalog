@@ -34,6 +34,9 @@ function transport() {
 const appUrl = (path: string) =>
   `${(process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '')}${path}`
 
+const esc = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
 /** Links open a page that POSTs; opening a link changes nothing. */
 async function send(to: string, subject: string, link: string, action: string, note: string) {
   if (MODE === 'console') {
@@ -48,10 +51,10 @@ async function send(to: string, subject: string, link: string, action: string, n
     subject,
     text: `${action}:\n\n${link}\n\n${note}`,
     html: `
-      <p>${action}:</p>
-      <p><a href="${link}" style="background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;display:inline-block">Open the Prop Catalog</a></p>
-      <p style="color:#666;font-size:13px">Or paste this into your browser:<br>${link}</p>
-      <p style="color:#666;font-size:13px">${note}</p>
+      <p>${esc(action)}:</p>
+      <p><a href="${esc(link)}" style="background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;display:inline-block">Open the Prop Catalog</a></p>
+      <p style="color:#666;font-size:13px">Or paste this into your browser:<br>${esc(link)}</p>
+      <p style="color:#666;font-size:13px">${esc(note)}</p>
     `,
   })
 }
@@ -67,3 +70,21 @@ export const sendPasswordResetEmail = (to: string, token: string) => send(to,
   appUrl(`/reset-password?token=${token}`),
   'Choose a new password for your Prop Catalog account by opening this link',
   'The link expires in 1 hour and works once. If you did not ask to reset your password, ignore this email — your password stays the same.')
+
+const STATUS_TEXT: Record<string, string> = {
+  approved: 'was approved. You can pick it up',
+  rejected: 'was rejected',
+  checked_out: 'is now checked out to you. Please return it by the end date',
+  returned: 'was marked as returned. Thank you',
+  cancelled: 'was cancelled',
+}
+
+export function sendReservationEmail(to: string, r: {
+  item: string; status: string; start: string; end: string; note: string | null
+}) {
+  return send(to,
+    `Reservation ${r.status.replace('_', ' ')}: ${r.item}`,
+    appUrl('/my-reservations'),
+    `Your reservation for ${r.item} (${r.start} → ${r.end}) ${STATUS_TEXT[r.status]}. Details are in My Reservations`,
+    r.note ? `Note from the admin: ${r.note}` : '')
+}
