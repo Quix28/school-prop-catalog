@@ -4,7 +4,7 @@ import { useState, useRef } from 'react'
 import { api, errorMessage, fromSqlTime, getCurrentUser, signOut } from '@/lib/client'
 import { useLiveData } from '@/lib/useLiveData'
 import type { Item, Reservation } from '@/lib/types'
-import { CONDITIONS, ITEM_FIELDS } from '@/lib/items'
+import { CONDITIONS } from '@/lib/items'
 import { useRouter } from 'next/navigation'
 import SettingsTab from './settings-tab'
 import ZoomablePhoto from '@/app/zoomable-photo'
@@ -412,9 +412,6 @@ export default function AdminPage() {
                 Import CSV
               </button>
               <input ref={importRef} type="file" accept=".csv,text/csv" onChange={handleImport} className="hidden" />
-              <span className="text-xs text-gray-400">
-                Columns: {ITEM_FIELDS.join(', ')}. Only name is required; rows are added as new items.
-              </span>
             </div>
             {itemMsg && (
               <div className={`mb-4 p-3 rounded-lg text-sm border ${
