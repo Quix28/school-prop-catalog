@@ -35,7 +35,7 @@ the database too, so a single owner avoids permission problems.
 ```sh
 sudo mkdir -p /srv/prop-catalog
 sudo chown "$USER": /srv/prop-catalog
-git clone https://github.com/Quix28/YHP-School-Prop.git /srv/prop-catalog
+git clone https://github.com/Quix28/school-prop-catalog.git /srv/prop-catalog
 cd /srv/prop-catalog
 npm ci
 npm run build
@@ -162,11 +162,28 @@ Everything the app stores is in `DATA_DIR`:
 
 The server creates both on first start and adds any missing columns when it starts.
 
-### Option A: install the provided database
+### Create the first admin
 
-The project owner hands over a `catalog.db` and an `uploads` folder. Run these commands from the
-folder that holds them, replace `<user>` with the service account, and adjust the paths if your
-`DATA_DIR` is different:
+The site starts with an empty database. Start the service once so it creates the database, then
+create the first admin as the service account:
+
+```sh
+cd /srv/prop-catalog
+npm run create-admin
+```
+
+This runs `node --env-file=.env.local scripts/create-admin.mjs`, so it writes to the `DATA_DIR`
+in `.env.local`. It asks for an email address, a name and a password of at least 6 characters.
+If the address already has an account, the script makes it an admin and resets its password.
+Sign in at `https://<your domain>/admin-login` and set the site name, email domain and booking
+rules in the Settings tab. Further admins can sign up as students and be promoted in the Users
+tab, which needs `ADMIN_PROMOTE_CODE`.
+
+### Restore a database
+
+To restore a backup or move the database from another server, stop the service and replace the
+files in `DATA_DIR`. Run these commands from the folder that holds `catalog.db` and `uploads/`,
+replace `<user>` with the service account, and adjust the paths if your `DATA_DIR` is different:
 
 ```sh
 sudo systemctl stop prop-catalog
@@ -179,24 +196,7 @@ sudo systemctl start prop-catalog
 ```
 
 Delete the old `-wal` and `-shm` files before copying. SQLite would otherwise try to apply them
-to the new database. Accounts in the provided database keep their passwords, so the existing
-admins can sign in at `/admin-login` right away.
-
-### Option B: start fresh
-
-Start the service once so it creates an empty database, then create the first admin as the
-service account:
-
-```sh
-cd /srv/prop-catalog
-npm run create-admin
-```
-
-This runs `node --env-file=.env.local scripts/create-admin.mjs`, so it writes to the `DATA_DIR`
-in `.env.local`. It asks for an email address, a name and a password of at least 6 characters.
-If the address already has an account, the script makes it an admin and resets its password.
-Sign in at `https://<your domain>/admin-login` and set the site name, email domain and booking
-rules in the Settings tab.
+to the restored database. Accounts in the restored database keep their passwords.
 
 ## Backups
 
@@ -219,7 +219,7 @@ sudo chown <user>: /var/backups/prop-catalog
 
 Use `.backup` instead of `cp` on the live database. A plain copy taken while the server writes
 can be inconsistent. Copy the backups to a second machine or school storage as well. To
-restore, follow [Option A](#option-a-install-the-provided-database) with the backup file and the
+restore, follow [Restore a database](#restore-a-database) with the backup file and the
 matching uploads archive.
 
 ## Updating
