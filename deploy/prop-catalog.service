@@ -8,13 +8,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Use the account that owns /srv/prop-catalog; newer Pi OS images may have no 'pi' user.
+# Change to the account that owns /srv/prop-catalog and ran npm run build.
 User=pi
 WorkingDirectory=/srv/prop-catalog
 EnvironmentFile=/srv/prop-catalog/.env.local
 # Reservation dates use the server's local day.
 Environment=TZ=Europe/Istanbul
-ExecStart=/usr/bin/node server.js
+# Listen on localhost only, so the reverse proxy is the only way in.
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node .next/standalone/server.js
 Restart=on-failure
 RestartSec=5
 
