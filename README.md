@@ -1,241 +1,366 @@
 # School Prop & Costume Catalog
 
-Next.js app for reserving school theatre props and costumes. **Runs entirely on your own
-hardware** — a Raspberry Pi 4 is plenty. No cloud account, no external service, no API keys.
+A web app for reserving the school's theatre props and costumes. Students sign up with their
+school email address and request items for specific dates; admins approve requests, record
+checkouts and returns, and manage the inventory. It runs as a single Next.js server with a
+SQLite database and photos on disk, and needs no outside service except an SMTP mailbox.
 
-- **Database:** SQLite (`better-sqlite3`), one file you can copy to back up
-- **Auth:** own sessions, passwords hashed with Node's built-in `scrypt`, httpOnly cookies
-- **Image storage:** files on disk, served through the app
+## Requirements
+
+- A Linux server that you can reach from the internet on ports 80 and 443, and a domain name you
+  control. Any distribution works. A Raspberry Pi 4 or 5 with a 64-bit OS is also fine; if you
+  use one, put `DATA_DIR` on a USB SSD, because SQLite writes wear out SD cards.
+- Node.js 20.9 or newer, as required by Next.js 16. The repository does not pin a version; this
+  guide was verified with Node 24.13.1 (`node -v`). Install it so that `node` is at
+  `/usr/bin/node` (the NodeSource packages do this), or adjust `ExecStart` in the service file.
+- Build tools for `better-sqlite3`, a native module. npm downloads a prebuilt binary for common
+  platforms and compiles it from source otherwise, which needs a C++ compiler, make and Python 3.
+  The `sqlite3` command-line tool is used for backups. On Debian, Ubuntu or Raspberry Pi OS:
+
+  ```sh
+  sudo apt install -y build-essential python3 git sqlite3
+  ```
+
+- Memory: `npm run build` can use more than 4 GB of RAM. On a machine with 4 GB or less, add at
+  least 2 GB of swap before building.
+- [Caddy](https://caddyserver.com/docs/install) as the HTTPS reverse proxy (see
+  [Domain and HTTPS](#domain-and-https)).
+
+## Install and build
+
+This guide uses `/srv/prop-catalog`, which is the path `deploy/prop-catalog.service` expects.
+Clone, build and run the app as the same non-root account. The build and the admin script open
+the database too, so a single owner avoids permission problems.
+
+```sh
+sudo mkdir -p /srv/prop-catalog
+sudo chown "$USER": /srv/prop-catalog
+git clone https://github.com/Quix28/YHP-School-Prop.git /srv/prop-catalog
+cd /srv/prop-catalog
+npm ci
+npm run build
+```
+
+`npm run build` runs `next build` and then copies `.next/static` and `public/` into
+`.next/standalone/`. The production server is `.next/standalone/server.js`. It carries its own
+`node_modules`, including the `better-sqlite3` binary that `npm ci` built for this machine.
+
+## Configuration
+
+```sh
+cd /srv/prop-catalog
+cp .env.example .env.local
+chmod 600 .env.local
+nano .env.local
+```
+
+The service loads this file through systemd's `EnvironmentFile`. Write one `KEY=value` per line.
+Never put a `# comment` on the same line as a value: systemd keeps it as part of the value.
+
+| Variable | What it does | Production value |
+|---|---|---|
+| `DATA_DIR` | Folder for the database (`catalog.db`) and uploaded photos (`uploads/`). If unset, the server uses `data/` inside `.next/standalone`, and the next build deletes it. | `/srv/prop-catalog/data`, or another absolute path outside `.next/` |
+| `ALLOWED_EMAIL_DOMAIN` | Only addresses at this domain can sign up. Once an admin saves the Settings tab, the value stored there is used instead. | The students' email domain, for example `robcol.k12.tr` |
+| `COOKIE_SECURE` | Marks the login cookie `Secure`, so browsers only send it over HTTPS. | `true` |
+| `PORT` | Port the Node server listens on. Caddy forwards to it. | `3000`, or another free port that matches the Caddyfile |
+| `ADMIN_PROMOTE_CODE` | Confirmation code that admins type to save the Settings tab and for every action in the Users tab: role changes, reset links, deactivation and deletion. If empty, those actions are disabled. | A long random string from `openssl rand -hex 16` |
+| `TRUST_PROXY` | Takes the client IP from the `X-Forwarded-For` header that the proxy adds. The rate limits on login, sign-up and the confirmation code are keyed on that IP. | `true`, as long as the app is only reachable through Caddy |
+| `APP_URL` | Public address used to build links in emails: account confirmation, password reset and reservation updates. | `https://<your domain>` |
+| `MAIL_TRANSPORT` | `console` prints email links to the log instead of sending them. It is meant for development and is refused in production. | Remove the line, or set it to `smtp` |
+| `SMTP_HOST` | Outgoing mail server. | The school's SMTP server, for example `smtp.office365.com` or `smtp.gmail.com` |
+| `SMTP_PORT` | `587` uses STARTTLS; `465` uses TLS from the start. | `587` |
+| `SMTP_USER` | SMTP login. | A school-owned mailbox, for example `props@<school domain>` |
+| `SMTP_PASS` | Password for that login. | The mailbox password, or an app password if the provider requires one |
+| `SMTP_FROM` | Sender name and address on outgoing email. | `"Prop Catalog <props@<school domain>>"`, using an address the mailbox is allowed to send as |
+
+Points to get right:
+
+- `ADMIN_PROMOTE_CODE` must be set, or admins cannot change settings or manage users. Give the
+  code to the admins in person. It is never shown in the app.
+- `APP_URL=https://<your domain>`. Students get their confirmation links from it, so a wrong
+  value breaks sign-up.
+- `COOKIE_SECURE=true` and `TRUST_PROXY=true` once Caddy serves the site over HTTPS.
+- Send mail through a school-owned account, not a personal one. Students are asked to click
+  links in these emails, and mail from a personal address looks like phishing.
+- The service file sets `HOSTNAME=127.0.0.1`, so Next.js listens on localhost only and nobody
+  can bypass Caddy to forge the `X-Forwarded-For` header. Keep it that way while
+  `TRUST_PROXY=true`.
+
+Check the mail settings before going live. The script reads `.env.local` from the current
+directory and prints the exact SMTP error if sending fails:
+
+```sh
+cd /srv/prop-catalog
+node scripts/test-mail.mjs you@<school domain>
+```
+
+## Domain and HTTPS
+
+1. Create a DNS A record for the name you want, for example `props.<school domain>`, that points
+   to the server's public IPv4 address. Add an AAAA record as well if the server has IPv6.
+   `dig +short props.<school domain>` should print the server's address.
+2. Allow ports 80 and 443 through any firewall in front of the server. Caddy uses both to get and
+   renew the certificate.
+3. Install Caddy and replace `/etc/caddy/Caddyfile` with:
+
+   ```
+   props.example.org {
+       reverse_proxy 127.0.0.1:3000
+   }
+   ```
+
+   Use your own domain, and the port from `PORT` if you changed it. Then run
+   `sudo systemctl reload caddy`. Caddy gets and renews the certificate and redirects `http://`
+   to `https://` on its own.
+
+If the server is only reachable inside the school network, Let's Encrypt cannot validate it over
+port 80. In that case use the school's own certificate with Caddy's `tls` directive.
+
+The app limits the rate of login and sign-up attempts, checks the type and size of every upload,
+and checks the admin role on the server for every admin request. A server that is open to the
+internet still needs OS updates. If only staff and students on the school network need it,
+restricting access with a firewall or VPN is safer.
+
+## Running as a service
+
+`deploy/prop-catalog.service` is a systemd unit. Copy it and edit the copy:
+
+```sh
+sudo cp /srv/prop-catalog/deploy/prop-catalog.service /etc/systemd/system/
+sudo nano /etc/systemd/system/prop-catalog.service
+```
+
+| Line in the file | Change it to |
+|---|---|
+| `User=pi` | The account that owns `/srv/prop-catalog` and ran `npm run build`. |
+| `WorkingDirectory=/srv/prop-catalog` | The clone directory, if you used another path. |
+| `EnvironmentFile=/srv/prop-catalog/.env.local` | The path of `.env.local` from [Configuration](#configuration). |
+| `ExecStart=/usr/bin/node .next/standalone/server.js` | Change `/usr/bin/node` only if `which node` prints another path. |
+| `Environment=TZ=Europe/Istanbul` | The school's time zone. Reservation dates use the server's local day. |
+| `Environment=HOSTNAME=127.0.0.1` | Leave as is when Caddy runs on the same machine. Only change it if the proxy runs on another host, and then allow only that host to reach `PORT`. |
+| `ReadWritePaths=-/srv/prop-catalog/data` | Your `DATA_DIR`. The unit makes `/home`, `/usr`, `/boot` and `/etc` read-only; this line keeps `DATA_DIR` writable even if it is under one of them. |
+
+Then start it and check the log:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now prop-catalog
+systemctl status prop-catalog
+journalctl -u prop-catalog -f
+```
+
+`curl -I http://127.0.0.1:3000/login` should return `200`. After that, open
+`https://<your domain>` in a browser.
+
+## Database
+
+Everything the app stores is in `DATA_DIR`:
+
+- `catalog.db`: items, reservations, accounts with password hashes, settings and sessions. While
+  the server runs, SQLite also keeps `catalog.db-wal` and `catalog.db-shm` next to it.
+- `uploads/`: item photos. The database refers to them by file name, so keep the names unchanged.
+
+The server creates both on first start and adds any missing columns when it starts.
+
+### Option A: install the provided database
+
+The project owner hands over a `catalog.db` and an `uploads` folder. Run these commands from the
+folder that holds them, replace `<user>` with the service account, and adjust the paths if your
+`DATA_DIR` is different:
+
+```sh
+sudo systemctl stop prop-catalog
+sudo mkdir -p /srv/prop-catalog/data/uploads
+sudo rm -f /srv/prop-catalog/data/catalog.db-wal /srv/prop-catalog/data/catalog.db-shm
+sudo cp catalog.db /srv/prop-catalog/data/catalog.db
+sudo cp -r uploads/. /srv/prop-catalog/data/uploads/
+sudo chown -R <user>: /srv/prop-catalog/data
+sudo systemctl start prop-catalog
+```
+
+Delete the old `-wal` and `-shm` files before copying. SQLite would otherwise try to apply them
+to the new database. Accounts in the provided database keep their passwords, so the existing
+admins can sign in at `/admin-login` right away.
+
+### Option B: start fresh
+
+Start the service once so it creates an empty database, then create the first admin as the
+service account:
+
+```sh
+cd /srv/prop-catalog
+npm run create-admin
+```
+
+This runs `node --env-file=.env.local scripts/create-admin.mjs`, so it writes to the `DATA_DIR`
+in `.env.local`. It asks for an email address, a name and a password of at least 6 characters.
+If the address already has an account, the script makes it an admin and resets its password.
+Sign in at `https://<your domain>/admin-login` and set the site name, email domain and booking
+rules in the Settings tab.
+
+## Backups
+
+An admin can download the whole database from Admin > Settings > Download database backup. The
+file is a consistent snapshot and contains password hashes, so keep it private. Photos are not
+included.
+
+For nightly backups, create a folder the service account can write to and add two lines to that
+account's crontab (`crontab -e`). Cron treats `%` as a newline, so it must be written as `\%`:
+
+```sh
+sudo mkdir -p /var/backups/prop-catalog
+sudo chown <user>: /var/backups/prop-catalog
+```
+
+```cron
+30 2 * * * sqlite3 /srv/prop-catalog/data/catalog.db ".backup '/var/backups/prop-catalog/catalog-$(date +\%F).db'" && tar czf /var/backups/prop-catalog/uploads-$(date +\%F).tar.gz -C /srv/prop-catalog/data uploads
+45 2 * * * find /var/backups/prop-catalog -type f -mtime +30 -delete
+```
+
+Use `.backup` instead of `cp` on the live database. A plain copy taken while the server writes
+can be inconsistent. Copy the backups to a second machine or school storage as well. To
+restore, follow [Option A](#option-a-install-the-provided-database) with the backup file and the
+matching uploads archive.
+
+## Updating
+
+Take a backup first, then:
+
+```sh
+cd /srv/prop-catalog
+git pull
+npm ci
+npm run build
+sudo systemctl restart prop-catalog
+```
+
+The build replaces `.next/`, which the running service serves from, so pages can fail until the
+restart. For a clean outage, run `sudo systemctl stop prop-catalog` before `npm run build` and
+`sudo systemctl start prop-catalog` after it. Nothing in `DATA_DIR` is touched, and the server
+adds any new database columns when it starts.
+
+## Troubleshooting
+
+### Emails are not sent
+
+- `journalctl -u prop-catalog` shows the SMTP error for each failed email.
+- Run `node scripts/test-mail.mjs you@<school domain>` from `/srv/prop-catalog`.
+- If sign-up says "the server cannot send confirmation email", `SMTP_HOST`, `SMTP_USER` or
+  `SMTP_PASS` is empty, or `MAIL_TRANSPORT=console` is still set.
+- Microsoft 365 answers `535 5.7.139 ... SmtpClientAuthentication is disabled for the Tenant`
+  when SMTP AUTH is off, which is Microsoft's default. A tenant admin can turn it on for the
+  mailbox with
+  `Set-CASMailbox -Identity props@<school domain> -SmtpClientAuthenticationDisabled $false`.
+- Google Workspace and Gmail reject the normal account password. Turn on 2-Step Verification,
+  create an app password and paste it into `SMTP_PASS` without spaces.
+- If the provider rejects or rewrites the sender, set `SMTP_FROM` to an address the mailbox is
+  allowed to send as.
+- After editing `.env.local`, run `sudo systemctl restart prop-catalog`.
+
+### Links in emails point to the wrong host
+
+Email links are built from `APP_URL`. Set it to `https://<your domain>` and restart the service.
+Emails sent before the change keep the old links; students can request a new one at `/verify`
+or `/reset-password`.
+
+### Login does not stick behind HTTPS
+
+If sign-in succeeds and the next page sends you back to the login form, the browser dropped the
+session cookie.
+
+- With `COOKIE_SECURE=true`, browsers only keep the cookie over HTTPS. Open the site at
+  `https://<your domain>`, not over plain `http://`.
+- Check that the Caddyfile forwards to the port in `PORT` and that the browser shows a valid
+  certificate.
+
+### Permission errors on DATA_DIR
+
+Errors such as `SQLITE_CANTOPEN`, `SQLITE_READONLY`, `attempt to write a readonly database` or
+`EACCES` mean the service account cannot write to `DATA_DIR`.
+
+- SQLite creates the `-wal` and `-shm` files next to `catalog.db`, so the service account needs
+  write access to the folder itself. Fix ownership with `sudo chown -R <user>: <DATA_DIR>`.
+- Files copied with `sudo`, or a database created by running `npm run create-admin` as root,
+  belong to root. Run the `chown` again.
+- `npm run build` and `npm run create-admin` also open the database. Run them as the service
+  account.
+- If `DATA_DIR` is under `/home` or another protected path, add it to `ReadWritePaths=` in the
+  unit, then run `sudo systemctl daemon-reload` and `sudo systemctl restart prop-catalog`.
+
+### Many students get "Too many sign-up attempts"
+
+Set `TRUST_PROXY=true` and restart. Without it, the app sees every visitor as the same client,
+so a class signing up together hits the per-IP sign-up limit.
 
 ## Local development
 
 ```sh
 npm install
-cp .env.example .env.local     # defaults are fine for local work
-npm run create-admin           # prompts for the first admin's email + password
+cp .env.example .env.local     # the defaults work for local development
+npm run create-admin           # asks for the first admin's email and password
 npm run dev                    # http://localhost:3000
 ```
 
-Students register themselves at `/signup`; admins sign in at `/admin-login`.
+With `MAIL_TRANSPORT=console`, email links are printed to the terminal instead of being sent.
+`npm start` runs the production build locally with `./data` as `DATA_DIR`.
 
-### Email confirmation
+Students register at `/signup`; admins sign in at `/admin-login`.
 
-Sign-up sends a confirmation link and the account stays inert until it is opened, so knowing
-someone's address is not enough to open an account in their name. For local work set
-`MAIL_TRANSPORT=console` and the link is printed to the server log instead of being sent.
+## Accounts and email links
 
-**In production you must configure SMTP** (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`)
-and set `APP_URL` to the address students will actually reach — the confirmation link is built
-from it. With SMTP missing, sign-up is refused rather than creating accounts nobody can confirm.
-Check the settings before relying on them:
+Sign-up sends a confirmation link, and the account cannot sign in until it is confirmed.
+Knowing someone's address is therefore not enough to open an account in their name.
 
-```sh
-node scripts/test-mail.mjs you@example.com
-```
+Links expire after 24 hours and work once. The link opens a page that asks for the password
+chosen at sign-up, and only that step activates the account. Mail scanners such as Microsoft
+Safe Links open every link, but opening it changes nothing. If a student registers an address
+they don't own, the real owner can still claim it: signing up again overwrites an unconfirmed
+registration, and because confirming needs the password, the owner's click can never activate
+the other person's password.
 
-**Using a school Office 365 / Outlook account:** likely to fail with
-`535 5.7.139 ... SmtpClientAuthentication is disabled for the Tenant`. Microsoft has disabled
-SMTP AUTH by default on every tenant since 2020, and no password will work until an
-administrator enables it for the mailbox:
-
-```powershell
-Set-CASMailbox -Identity you@school.tr -SmtpClientAuthenticationDisabled $false
-```
-
-That is a request for whoever runs the school's Microsoft tenant. Until then, use another relay.
-
-**Using Gmail:** you need an *App Password*, not the account password — Google disabled plain
-password SMTP in 2022. Turn on 2-Step Verification, then create one at
-<https://myaccount.google.com/apppasswords> and use it as `SMTP_PASS`.
-
-```
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=you@gmail.com
-SMTP_PASS=abcdefghijklmnop
-```
-
-Paste the 16-character app password **without its spaces**, and never put a `# comment` on the
-same line: systemd's `EnvironmentFile` keeps both as part of the value, so a password that
-works under `npm run dev` fails on the Pi.
-
-Two things to expect with Gmail: it **rewrites the From address** to your own account no matter
-what `SMTP_FROM` says (unless you set up a verified "Send mail as" alias), and free accounts are
-capped around **500 messages a day**. The school's own relay is better if you can get
-credentials — mail from a personal Gmail asking students to click a link looks like phishing and
-is more likely to be filtered.
-
-Links expire after 24 hours and are single-use. The link opens a page that asks for the password
-chosen at sign-up, and only that activates the account — opening the link alone does nothing, so
-mail scanners (Microsoft Safe Links) that open every link cannot use it up. If a student
-registers an address they don't own, the real owner can still claim it: an unconfirmed
-registration is overwritten rather than blocking the address, and because confirming needs the
-password, the owner's click can never activate the stranger's password.
-
-**Forgot password** (`/reset-password`, linked from both sign-in pages) uses the same mail
-settings. The link expires after an hour, works once, and signs the account out everywhere.
-Only confirmed accounts get one; an unconfirmed sign-up is fixed by signing up again.
+Forgot password (`/reset-password`, linked from both sign-in pages) uses the same mail settings.
+The link expires after an hour, works once, and signs the account out everywhere. Only
+confirmed accounts get one; an unconfirmed sign-up is fixed by signing up again.
 
 ## Admin panel
 
-Everything day to day is done in `/admin`, no code or shell needed:
+Day-to-day work happens in `/admin` and needs no shell access:
 
-- **Items:** add, edit (including condition and photo), delete. Quantity can't go below what is
+- Items: add, edit (including condition and photo) and delete. Quantity can't go below what is
   booked on the busiest upcoming day.
-- **CSV:** *Export CSV* downloads every item; *Import CSV* adds rows as new items. Columns:
-  `name` (required), `description`, `category` (prop/costume), `subcategory`, `quantity_total`,
-  `condition` (excellent/good/fair/poor), `notes`, `image_url`. Comma or semicolon separated. If any
-  row is invalid, nothing is imported.
-- **Reservations:** approve, reject, check out, return, each with an optional note to the student.
-  Search by student, item or purpose.
-- **Users:** send a password-reset link, deactivate or reactivate, delete (students with no
-  reservations only), view someone's reservations. Remove an admin role before any of these.
-- **Settings:** site name, allowed email domain (overrides `ALLOWED_EMAIL_DOMAIN`), an
-  announcement shown on every page, and student booking rules: maximum length, minimum notice,
-  maximum items at once, blocked date ranges. Admins are exempt from the rules.
-- **Backup:** downloads the database. It includes password hashes, so keep it private; photos
-  are not included (see *Backups* below).
+- CSV: Export CSV downloads every item; Import CSV adds rows as new items. Columns: `name`
+  (required), `description`, `category` (prop/costume), `subcategory`, `quantity_total`,
+  `condition` (excellent/good/fair/poor), `notes`, `image_url`. Comma or semicolon separated. If
+  any row is invalid, nothing is imported.
+- Reservations: approve, reject, check out and return, each with an optional note to the
+  student. The student gets an email when an admin changes the status. Search by student, item
+  or purpose.
+- Users: send a password-reset link, deactivate or reactivate, delete, or view someone's
+  reservations. Deleting a student with past reservations needs Force delete; open
+  reservations always block deletion. Remove an admin role before any of these.
+- Settings: site name, allowed email domain (overrides `ALLOWED_EMAIL_DOMAIN`), an announcement
+  shown on every page, and student booking rules: maximum length, minimum notice, maximum items
+  at once and blocked date ranges. Admins are exempt from the rules.
+- Backup: downloads the database (see [Backups](#backups)).
 
-Secrets (SMTP, `ADMIN_PROMOTE_CODE`) stay in `.env.local` on purpose.
-
-## Deploying to a Raspberry Pi 4
-
-### 1. Build somewhere other than the Pi
-
-`next build` with the React Compiler needs well over 4 GB and **will likely be killed by the
-OOM reaper on a 4 GB Pi.** Build on your laptop and copy the result:
-
-```sh
-npm ci && npm run build        # also copies .next/static and public/ into the standalone folder
-rsync -a --exclude data/ --exclude '.env*' --exclude node_modules/better-sqlite3/ \
-  .next/standalone/ pi@raspberrypi:/srv/prop-catalog/
-rsync -a scripts deploy .env.example pi@raspberrypi:/srv/prop-catalog/
-```
-
-The `standalone` output bundles its own minimal `node_modules`, so the Pi never runs `npm ci`.
-
-The excludes are what make a redeploy safe: without them rsync would overwrite the Pi's live
-database, its `.env.local` and the Linux build of `better-sqlite3` (step 2) with your laptop's
-copies. The build is also configured never to put those into `.next/standalone` in the first
-place — check with `ls -a .next/standalone`, which should show no `data` and no `.env.local`.
-
-If you would rather build on the Pi anyway, add swap first and expect ~15 minutes:
-
-```sh
-sudo dphys-swapfile swapoff
-sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile
-sudo dphys-swapfile setup && sudo dphys-swapfile swapon
-```
-
-### 2. Replace the native module on the Pi
-
-`better-sqlite3` is a compiled binding. The copy that comes across in `standalone/` is a
-**macOS (Mach-O) binary** and will not load on Linux — the server exits on first request with
-an "invalid ELF header" style error.
-
-`npm rebuild` does **not** work here: the standalone output ships only `build/`, `lib/` and
-`package.json`, with `binding.gyp`, `src/` and `deps/` stripped, so there is nothing to compile.
-Install it fresh instead, which fetches the full package and builds it for linux-arm64:
-
-```sh
-sudo apt install -y build-essential python3
-cd /srv/prop-catalog
-npm install better-sqlite3@12.11.1        # match the version in package.json
-```
-
-Expect a few minutes — it compiles the SQLite amalgamation. Node's major version on the Pi
-must match the one you built with (`node -v` on both), or the ABI won't line up.
-
-Verify before starting the service:
-
-```sh
-node -e "require('better-sqlite3'); console.log('native module OK')"
-```
-
-### 3. Put the data on an SSD, not the SD card
-
-SQLite writes constantly; SD cards die from it. Mount a USB SSD and point `DATA_DIR` there:
-
-```sh
-sudo mkdir -p /srv/prop-catalog/data      # or /mnt/ssd/prop-catalog
-sudo chown pi:pi /srv/prop-catalog/data
-```
-
-### 4. Configure and start
-
-```sh
-cd /srv/prop-catalog
-cp .env.example .env.local
-nano .env.local                # see the list below
-node scripts/test-mail.mjs you@example.com
-node --env-file=.env.local scripts/create-admin.mjs
-sudo cp deploy/prop-catalog.service /etc/systemd/system/   # check User= first
-sudo systemctl daemon-reload && sudo systemctl enable --now prop-catalog
-```
-
-In `.env.local`, set:
-
-- `DATA_DIR`: the SSD path from step 3. If it is not `/srv/prop-catalog/data`, add it to
-  `ReadWritePaths` in the service file.
-- `ALLOWED_EMAIL_DOMAIN`: your school's domain.
-- `APP_URL`: the public `https://` address. Confirmation links are built from it.
-- `MAIL_TRANSPORT`: delete the line. `console` is refused in production.
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`: see *Email confirmation*.
-- `ADMIN_PROMOTE_CODE`: a long random string (`openssl rand -hex 16`). Role changes stay
-  disabled without it.
-- `COOKIE_SECURE`, `TRUST_PROXY`: both `true` once step 5 is done.
-
-`create-admin.mjs` needs `--env-file`: without it `DATA_DIR` is ignored and the admin is written
-to a different database from the one the server uses.
-
-### 5. Serve it over HTTPS
-
-**Do not expose the Next server directly on port 80.** Put Caddy in front — it obtains and
-renews a certificate on its own:
-
-```
-catalog.yourschool.tr {
-    reverse_proxy localhost:3000
-}
-```
-
-Then set `COOKIE_SECURE=true` and `TRUST_PROXY=true` in `.env.local` and restart. Leave
-`COOKIE_SECURE` `false` while you are on plain HTTP, or login will appear to succeed and then
-immediately log you out — a `Secure` cookie is silently discarded over `http://`. Without
-`TRUST_PROXY`, every visitor looks like the same client to the rate limiter, so one busy
-classroom can lock everyone else out of logging in.
-
-> Exposing a Pi on a school network to the public internet is a real risk you are taking on.
-> Sessions are httpOnly cookies, login and signup are rate limited, uploads are type- and
-> size-checked, and every admin action is authorised server-side — but keep the OS patched
-> and consider restricting access with Tailscale or a VPN instead of opening it to everyone.
-
-## Backups
-
-Everything that matters is in `DATA_DIR`:
-
-```sh
-sqlite3 $DATA_DIR/catalog.db ".backup '/mnt/backup/catalog-$(date +%F).db'"
-tar czf /mnt/backup/uploads-$(date +%F).tar.gz -C $DATA_DIR uploads
-```
-
-Use `.backup` rather than copying the file — a plain `cp` of a live WAL database can capture a
-torn state.
+Saving settings and every action in the Users tab need `ADMIN_PROMOTE_CODE`. Secrets such as the
+SMTP password and that code stay in `.env.local` on purpose.
 
 ## Layout
 
 | Path | Purpose |
 |---|---|
-| `lib/db.ts` | SQLite connection, schema, WAL/foreign-key pragmas |
+| `lib/db.ts` | SQLite connection, schema, WAL and foreign-key pragmas |
 | `lib/auth.ts` | scrypt hashing, sessions, `requireUser` / `requireAdmin` guards |
-| `lib/ratelimit.ts` | in-memory login/signup throttle |
+| `lib/ratelimit.ts` | in-memory login and sign-up throttle |
 | `lib/client.ts` | browser-side `fetch` wrapper used by the pages |
-| `app/api/**` | all database access — nothing touches SQLite from the browser |
-| `scripts/create-admin.mjs` | bootstrap or promote an admin |
+| `app/api/**` | all database access; the browser never touches SQLite |
+| `scripts/create-admin.mjs` | create or promote an admin |
+| `scripts/test-mail.mjs` | send a test email with the SMTP settings |
 | `deploy/` | systemd unit |
 
-Authorisation lives in the API routes. The role checks in the pages only decide where to
-redirect; every admin route re-checks the session's role independently, so a student cannot
+Authorization lives in the API routes. The role checks in the pages only decide where to
+redirect. Every admin route checks the session's role again on the server, so a student cannot
 reach admin functions by calling the API directly.
 
 ## Availability
