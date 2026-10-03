@@ -57,7 +57,6 @@ function ResetPassword() {
   if (state === 'done') {
     return (
       <div className={`${card} text-center`}>
-        <p className="text-5xl mb-4">✅</p>
         <h1 className="text-xl font-bold text-gray-900 mb-2">Password changed</h1>
         <p className="text-gray-500 text-sm mb-6">
           You&apos;ve been signed out everywhere. Sign in with your new password.

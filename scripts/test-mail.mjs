@@ -11,7 +11,7 @@ try {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/)
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '')
   }
-} catch { /* no .env.local — rely on the real environment */ }
+} catch { /* no .env.local: rely on the real environment */ }
 
 const to = process.argv[2]
 if (!to) { console.error('Usage: node scripts/test-mail.mjs recipient@example.com'); process.exit(1) }
@@ -42,7 +42,7 @@ try {
     text: 'If you are reading this, confirmation emails will work.',
   })
   console.log('✓ sent:', info.messageId)
-  console.log('  envelope from:', info.envelope?.from, '— Gmail rewrites this to your own address')
+  console.log('  envelope from:', info.envelope?.from, '(Gmail rewrites this to your own address)')
 } catch (e) {
   console.error('✗ failed:', e.message)
   if (/Username and Password not accepted|BadCredentials/i.test(e.message)) {

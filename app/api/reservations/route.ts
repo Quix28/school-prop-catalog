@@ -83,7 +83,7 @@ export function POST(req: Request) {
     }
 
     // Units free for these dates. Synchronous check-then-insert, so no race.
-    // ponytail: sums all overlapping bookings, so it can refuse too early when quantity > 1.
+    // Sums all overlapping bookings, so it can refuse too early when quantity > 1.
     // Switch to a per-day peak if that happens.
     const { held } = db.prepare(`
       SELECT COALESCE(SUM(r.quantity), 0) AS held FROM reservations r

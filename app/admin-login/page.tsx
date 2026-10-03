@@ -38,7 +38,6 @@ export default function AdminLoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-purple-600 rounded-full mx-auto mb-4 flex items-center justify-center">
             <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,14 +48,12 @@ export default function AdminLoginPage() {
           <p className="text-gray-600">Sign in to manage props and costumes</p>
         </div>
 
-        {/* Error Message */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-sm text-red-600">{error}</p>
           </div>
         )}
 
-        {/* Login Form */}
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
@@ -104,7 +101,6 @@ export default function AdminLoginPage() {
           </button>
         </form>
 
-        {/* Back link */}
         <div className="mt-6 space-y-3 text-center">
           <a href="/reset-password" className="block text-sm text-blue-600 hover:text-blue-700">
             Forgot your password?
@@ -114,11 +110,10 @@ export default function AdminLoginPage() {
           </a>
         </div>
 
-        {/* Warning */}
         <div className="mt-8 pt-6 border-t border-gray-200">
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
             <p className="text-xs text-amber-800 font-medium">
-              ⚠️ Admin access only. You must have admin privileges to access this panel.
+              Admin access only. You must have admin privileges to access this panel.
             </p>
           </div>
         </div>

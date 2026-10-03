@@ -119,10 +119,9 @@ export default function CatalogPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-indigo-600 text-white px-6 py-4 flex justify-between items-center shadow">
       <div>
-        <h1 className="text-xl font-bold">🎭 {settings.site_name}</h1>
+        <h1 className="text-xl font-bold">{settings.site_name}</h1>
         <p className="text-indigo-200 text-sm">{user?.email}</p>
       </div>
       <div className="flex gap-2">
@@ -135,7 +134,6 @@ export default function CatalogPage() {
       </div>
     </header>
 
-      {/* Success/Error banner */}
       {loadError && (
         <div className="bg-red-50 border-b border-red-200 px-6 py-3 text-red-700 text-sm">
           Could not load the catalog: {loadError}. It will retry when you come back to this tab.
@@ -143,12 +141,11 @@ export default function CatalogPage() {
       )}
       {successMsg && (
         <div className="bg-green-50 border-b border-green-200 px-6 py-3 text-green-700 text-sm flex justify-between">
-          ✅ {successMsg}
+          {successMsg}
           <button onClick={() => setSuccessMsg('')}>✕</button>
         </div>
       )}
 
-      {/* Search & Filter */}
       <div className="bg-white border-b px-6 py-4 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
           <input
@@ -175,7 +172,6 @@ export default function CatalogPage() {
           </div>
         </div>
 
-        {/* Subcategory pills, hidden when none exist */}
         {subcategories.length > 0 && (
           <div className="flex gap-2 flex-wrap items-center">
             <span className="text-xs text-gray-400 mr-1">Subcategory:</span>
@@ -196,25 +192,21 @@ export default function CatalogPage() {
         )}
       </div>
 
-      {/* Grid */}
       <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {filtered.length === 0 ? (
           <div className="col-span-full text-center py-20 text-gray-500">
-            <p className="text-5xl mb-4">🎭</p>
             <p className="text-lg font-medium">No items found</p>
             <p className="text-sm">Try adjusting your search or filters</p>
           </div>
         ) : filtered.map(item => (
           <div key={item.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
-            {/* Image */}
             <div className="h-48 bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center overflow-hidden">
               {item.image_url
                 ? <ZoomablePhoto src={item.image_url} alt={item.name} />
-                : <span className="text-5xl">{item.category === 'costume' ? '👗' : '🎭'}</span>
+                : <span className="text-sm text-gray-400">No photo</span>
               }
             </div>
 
-            {/* Info */}
             <div className="p-4 flex flex-col flex-1">
               <div className="flex justify-between items-start mb-1">
                 <h3 className="font-semibold text-gray-900 leading-tight">{item.name}</h3>
@@ -233,13 +225,12 @@ export default function CatalogPage() {
                 <p className="text-sm text-gray-600 mb-3 line-clamp-2 flex-1">{item.description}</p>
               )}
 
-              {/* Availability */}
               <div className="flex items-center justify-between mb-3">
                 <span className={`text-sm font-medium ${
                   item.quantity_available > 0 ? 'text-green-600' : 'text-amber-600'
                 }`}>
                   {item.quantity_available > 0
-                    ? `✓ ${item.quantity_available} available today`
+                    ? `${item.quantity_available} available today`
                     : 'Booked today'}
                 </span>
                 {item.condition && (
@@ -262,7 +253,6 @@ export default function CatalogPage() {
         ))}
       </div>
 
-      {/* Reservation Modal */}
       {selectedItem && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">

@@ -17,16 +17,14 @@ export function PATCH(req: Request, { params }: { params: Promise<{ id: string }
       { id: string; email: string; role: string } | undefined
     if (!target) return Response.json({ error: 'User not found' }, { status: 404 })
 
-    // Don't let admins lock themselves out.
     if (target.id === admin.id && role === 'student') {
       return Response.json({ error: 'You cannot remove your own admin role' }, { status: 400 })
     }
-    // Keep at least one admin.
     if (target.role === 'admin' && role === 'student') {
       const { n } = db.prepare(`SELECT COUNT(*) AS n FROM profiles WHERE role = 'admin'`)
         .get() as { n: number }
       if (n <= 1) {
-        return Response.json({ error: 'This is the only admin — promote someone else first' },
+        return Response.json({ error: 'This is the only admin. Promote someone else first.' },
           { status: 400 })
       }
     }

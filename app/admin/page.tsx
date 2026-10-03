@@ -277,10 +277,9 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-purple-700 text-white px-6 py-4 flex justify-between items-center shadow-md">
         <div>
-          <h1 className="text-xl font-bold">🛠 Admin Panel</h1>
+          <h1 className="text-xl font-bold">Admin Panel</h1>
           <p className="text-purple-200 text-xs">Prop & Costume Management</p>
         </div>
         <button onClick={handleSignOut} className="bg-purple-800 hover:bg-purple-900 px-4 py-2 rounded-lg text-sm">
@@ -288,7 +287,6 @@ export default function AdminPage() {
         </button>
       </header>
 
-      {/* Tabs */}
       <div className="bg-white border-b px-6 flex gap-1">
         {[
           { id: 'reservations', label: `Reservations${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}` },
@@ -318,7 +316,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── RESERVATIONS TAB ── */}
         {activeTab === 'reservations' && (
           <div>
             <input
@@ -329,7 +326,6 @@ export default function AdminPage() {
               className="w-full mb-4 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
 
-            {/* Status filter */}
             <div className="flex gap-2 mb-5 flex-wrap">
               {['pending', 'approved', 'rejected', 'checked_out', 'returned', 'cancelled', 'all'].map(s => (
                 <button
@@ -346,7 +342,6 @@ export default function AdminPage() {
 
             {filteredReservations.length === 0 ? (
               <div className="text-center py-20 text-gray-400">
-                <p className="text-4xl mb-3">📋</p>
                 <p>No {statusFilter === 'all' ? '' : `${statusFilter} `}reservations{resQuery ? ` matching "${resSearch}"` : ''}</p>
               </div>
             ) : (
@@ -357,7 +352,7 @@ export default function AdminPage() {
                       <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center shrink-0 overflow-hidden">
                         {r.item_image
                           ? <ZoomablePhoto src={r.item_image} alt={r.item_name ?? 'Item'} />
-                          : <span className="text-3xl">🎭</span>
+                          : <span className="text-xs text-gray-400">No photo</span>
                         }
                       </div>
                       <div className="flex-1 min-w-0">
@@ -368,7 +363,7 @@ export default function AdminPage() {
                           </span>
                         </div>
                         <p className="text-sm text-gray-500">
-                          👤 {r.user_email} · 📅 {r.start_date} → {r.end_date} · Qty: {r.quantity}
+                          {r.user_email} · {r.start_date} → {r.end_date} · Qty: {r.quantity}
                         </p>
                         {r.purpose && <p className="text-sm text-gray-600 mt-1">Purpose: {r.purpose}</p>}
                         {r.admin_notes && <p className="text-sm text-amber-700 mt-1">Note: {r.admin_notes}</p>}
@@ -407,7 +402,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── ITEMS TAB ── */}
         {activeTab === 'items' && (
           <div>
             <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -457,7 +451,6 @@ export default function AdminPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredItems.length === 0 ? (
               <div className="col-span-full text-center py-20 text-gray-400">
-                <p className="text-4xl mb-3">📦</p>
                 <p>{items.length === 0
                   ? 'No items yet. Add some from the "Add Item" tab.'
                   : itemSearch
@@ -469,7 +462,7 @@ export default function AdminPage() {
                 <div className="h-40 bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center overflow-hidden">
                   {item.image_url
                     ? <ZoomablePhoto src={item.image_url} alt={item.name} />
-                    : <span className="text-4xl">{item.category === 'costume' ? '👗' : '🎭'}</span>
+                    : <span className="text-sm text-gray-400">No photo</span>
                   }
                 </div>
                 <div className="p-4">
@@ -505,14 +498,13 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── ADD ITEM TAB ── */}
         {activeTab === 'add' && (
           <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-sm p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-5">{editingId ? 'Edit Item' : 'Add New Item'}</h2>
 
             {saveMsg && (
               <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
-                ✅ {saveMsg}
+                {saveMsg}
               </div>
             )}
 
@@ -598,7 +590,6 @@ export default function AdminPage() {
                 />
               </div>
 
-              {/* Image Upload */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Photo</label>
                 <div
@@ -609,7 +600,6 @@ export default function AdminPage() {
                     <img src={newItem.image_url} alt="Preview" className="h-32 mx-auto object-contain rounded" />
                   ) : (
                     <>
-                      <p className="text-3xl mb-2">📷</p>
                       <p className="text-sm text-gray-500">{uploading ? 'Uploading...' : 'Click to upload photo'}</p>
                     </>
                   )}
@@ -639,7 +629,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── USERS TAB ── */}
         {activeTab === 'users' && (
           <div className="max-w-4xl mx-auto">
             <div className="bg-white rounded-2xl shadow-sm p-5 mb-5">
@@ -665,7 +654,7 @@ export default function AdminPage() {
                   ? 'bg-green-50 border-green-200 text-green-700'
                   : 'bg-red-50 border-red-200 text-red-700'
               }`}>
-                {userMsg.ok ? '✅' : '⚠️'} {userMsg.text}
+                {userMsg.text}
               </div>
             )}
 

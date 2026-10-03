@@ -1,6 +1,6 @@
 /**
  * Fixed-window rate limiter for the auth endpoints.
- * ponytail: in-memory, per process, reset on restart. Move to SQLite if that stops being enough.
+ * In memory and per process, so limits reset on restart. Move to SQLite if that stops being enough.
  */
 type Entry = { count: number; resetAt: number }
 
@@ -43,7 +43,6 @@ export function clientIp(req: Request): string {
   return 'unknown'
 }
 
-// Prune expired entries hourly.
 setInterval(() => {
   const now = Date.now()
   for (const [k, v] of buckets) if (now > v.resetAt) buckets.delete(k)

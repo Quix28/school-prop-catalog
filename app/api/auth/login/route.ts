@@ -36,7 +36,7 @@ export function POST(req: Request) {
     // Only after the password check, so it reveals nothing.
     if (!row.verified_at) {
       return Response.json({
-        error: 'Confirm your email address first — check your inbox for the link.',
+        error: 'Confirm your email address first. Check your inbox for the link.',
         unverified: true,
       }, { status: 403 })
     }

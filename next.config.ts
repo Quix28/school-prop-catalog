@@ -48,7 +48,7 @@ const nextConfig: NextConfig = {
       { source: "/api/uploads/:path*", headers: uploadHeaders },
     ];
   },
-  // Self-contained server: build elsewhere, rsync to the Pi.
+  // Self-contained server in .next/standalone, started by deploy/prop-catalog.service.
   output: "standalone",
   // Keep secrets, the local database and the repo out of that output.
   outputFileTracingExcludes: {

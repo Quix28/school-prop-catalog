@@ -52,7 +52,6 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-indigo-600 rounded-full mx-auto mb-4 flex items-center justify-center">
             <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -67,26 +66,22 @@ export default function SignupPage() {
           </p>
         </div>
 
-        {/* Error Message */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-sm text-red-600">{error}</p>
           </div>
         )}
 
-        {/* Success Message */}
         {success && (
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm text-green-600">
-              ✓ Almost there — open the confirmation link we just emailed to{' '}
+              Almost there. Open the confirmation link we just emailed to{' '}
               <strong>{formData.email}</strong> and enter this password to activate your account.
             </p>
           </div>
         )}
 
-        {/* Signup Form */}
         <form onSubmit={handleSignup} className="space-y-4">
-          {/* Full Name */}
           <div>
             <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
               Full Name
@@ -102,7 +97,6 @@ export default function SignupPage() {
             />
           </div>
 
-          {/* Email Input */}
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
               Email
@@ -118,7 +112,6 @@ export default function SignupPage() {
             />
           </div>
 
-          {/* Password Input */}
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
               Password
@@ -135,7 +128,6 @@ export default function SignupPage() {
             <p className="mt-1 text-xs text-gray-500">Minimum 6 characters</p>
           </div>
 
-          {/* Confirm Password */}
           <div>
             <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
               Confirm Password
@@ -151,7 +143,6 @@ export default function SignupPage() {
             />
           </div>
 
-          {/* Signup Button */}
           <button
             type="submit"
             disabled={loading || success}
@@ -170,7 +161,6 @@ export default function SignupPage() {
           </button>
         </form>
 
-        {/* Links */}
         <div className="mt-6 text-center">
           <a
             href="/login"

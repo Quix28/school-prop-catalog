@@ -2,7 +2,8 @@ import Database from 'better-sqlite3'
 import { mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-// On the Pi, point DATA_DIR at an SSD; SD cards wear out.
+// Set DATA_DIR to an absolute path in production: the standalone server runs from
+// .next/standalone, which every build replaces.
 // turbopackIgnore stops the build tracer copying the whole project into the standalone output.
 export const DATA_DIR = process.env.DATA_DIR || join(/* turbopackIgnore: true */ process.cwd(), 'data')
 export const UPLOAD_DIR = join(/* turbopackIgnore: true */ DATA_DIR, 'uploads')
@@ -112,7 +113,6 @@ db.exec(`
    WHERE verified_at IS NULL AND verify_token_hash IS NULL
 `)
 
-// Drop expired sessions.
 db.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run()
 
 // Drop sign-ups never confirmed, so nobody can squat an address.

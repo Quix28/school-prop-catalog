@@ -40,7 +40,7 @@ const esc = (s: string) =>
 /** Links open a page that POSTs; opening a link changes nothing. */
 async function send(to: string, subject: string, link: string, action: string, note: string) {
   if (MODE === 'console') {
-    console.log(`\n[mail:console] ${subject} — ${to}\n  ${link}\n`)
+    console.log(`\n[mail:console] ${subject} to ${to}\n  ${link}\n`)
     return
   }
 
@@ -63,13 +63,13 @@ export const sendVerificationEmail = (to: string, token: string) => send(to,
   'Confirm your Prop Catalog account',
   appUrl(`/verify?token=${token}`),
   'Confirm your Prop Catalog account by opening this link and entering the password you chose',
-  'The link expires in 24 hours. If you did not request an account, ignore this email — nothing was created in your name.')
+  'The link expires in 24 hours. If you did not request an account, ignore this email. Nothing was created in your name.')
 
 export const sendPasswordResetEmail = (to: string, token: string) => send(to,
   'Reset your Prop Catalog password',
   appUrl(`/reset-password?token=${token}`),
   'Choose a new password for your Prop Catalog account by opening this link',
-  'The link expires in 1 hour and works once. If you did not ask to reset your password, ignore this email — your password stays the same.')
+  'The link expires in 1 hour and works once. If you did not ask to reset your password, ignore this email. Your password stays the same.')
 
 const STATUS_TEXT: Record<string, string> = {
   approved: 'was approved. You can pick it up',
@@ -85,6 +85,6 @@ export function sendReservationEmail(to: string, r: {
   return send(to,
     `Reservation ${r.status.replace('_', ' ')}: ${r.item}`,
     appUrl('/my-reservations'),
-    `Your reservation for ${r.item} (${r.start} → ${r.end}) ${STATUS_TEXT[r.status]}. Details are in My Reservations`,
+    `Your reservation for ${r.item} (${r.start} to ${r.end}) ${STATUS_TEXT[r.status]}. Details are in My Reservations`,
     r.note ? `Note from the admin: ${r.note}` : '')
 }

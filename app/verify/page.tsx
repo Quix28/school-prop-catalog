@@ -49,7 +49,6 @@ function VerifyResult() {
   if (state === 'ok') {
     return (
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
-        <p className="text-5xl mb-4">✅</p>
         <h1 className="text-xl font-bold text-gray-900 mb-2">Email confirmed</h1>
         <p className="text-gray-500 text-sm mb-6">You&apos;re signed in and ready to reserve items.</p>
         <button
@@ -65,7 +64,6 @@ function VerifyResult() {
   if (state === 'confirm') {
     return (
       <form onSubmit={confirmAccount} className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-        <p className="text-5xl mb-4 text-center">✉️</p>
         <h1 className="text-xl font-bold text-gray-900 mb-2 text-center">Confirm your account</h1>
         <p className="text-gray-500 text-sm mb-6 text-center">
           Enter the password you chose when you signed up.
@@ -99,7 +97,6 @@ function VerifyResult() {
 
   return (
     <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-      <p className="text-5xl mb-4 text-center">⏳</p>
       <h1 className="text-xl font-bold text-gray-900 mb-2 text-center">Link not valid</h1>
       <p className="text-gray-500 text-sm mb-6 text-center">
         Confirmation links expire after 24 hours, can only be used once, and stop working when a

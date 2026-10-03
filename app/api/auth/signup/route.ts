@@ -11,7 +11,6 @@ const tooMany = (retryAfterSeconds: number) =>
 
 export function POST(req: Request) {
   return handler(async () => {
-    // No mail, no sign-up.
     if (!mailConfigured()) {
       return Response.json(
         { error: 'Sign-up is unavailable: the server cannot send confirmation email.' },
