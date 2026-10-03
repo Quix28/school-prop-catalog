@@ -7,6 +7,7 @@ import type { Item } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 import { addDays, plural } from '@/lib/dates'
 import { useSettings } from '@/app/settings-provider'
+import ZoomablePhoto from '@/app/zoomable-photo'
 
 export default function CatalogPage() {
   const router = useRouter()
@@ -208,7 +209,7 @@ export default function CatalogPage() {
             {/* Image */}
             <div className="h-48 bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center overflow-hidden">
               {item.image_url
-                ? <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                ? <ZoomablePhoto src={item.image_url} alt={item.name} />
                 : <span className="text-5xl">{item.category === 'costume' ? '👗' : '🎭'}</span>
               }
             </div>

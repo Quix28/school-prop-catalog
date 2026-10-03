@@ -7,9 +7,11 @@ import type { Item, Reservation } from '@/lib/types'
 import { CONDITIONS, ITEM_FIELDS } from '@/lib/items'
 import { useRouter } from 'next/navigation'
 import SettingsTab from './settings-tab'
+import ZoomablePhoto from '@/app/zoomable-photo'
 
 type ReservationWithDetails = Reservation & {
   item_name?: string
+  item_image?: string
   user_email?: string
 }
 
@@ -347,21 +349,29 @@ export default function AdminPage() {
               <div className="space-y-3">
                 {filteredReservations.map(r => (
                   <div key={r.id} className="bg-white rounded-xl shadow-sm p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-gray-900">{r.item_name}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[r.status] || 'bg-gray-100 text-gray-600'}`}>
-                          {r.status}
-                        </span>
+                    <div className="flex-1 min-w-0 flex gap-4">
+                      <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center shrink-0 overflow-hidden">
+                        {r.item_image
+                          ? <ZoomablePhoto src={r.item_image} alt={r.item_name ?? 'Item'} />
+                          : <span className="text-3xl">🎭</span>
+                        }
                       </div>
-                      <p className="text-sm text-gray-500">
-                        👤 {r.user_email} · 📅 {r.start_date} → {r.end_date} · Qty: {r.quantity}
-                      </p>
-                      {r.purpose && <p className="text-sm text-gray-600 mt-1">Purpose: {r.purpose}</p>}
-                      {r.admin_notes && <p className="text-sm text-amber-700 mt-1">Note: {r.admin_notes}</p>}
-                      <p className="text-xs text-gray-400 mt-1">
-                        Requested: {fromSqlTime(r.requested_at).toLocaleDateString()}
-                      </p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-gray-900">{r.item_name}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[r.status] || 'bg-gray-100 text-gray-600'}`}>
+                            {r.status}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          👤 {r.user_email} · 📅 {r.start_date} → {r.end_date} · Qty: {r.quantity}
+                        </p>
+                        {r.purpose && <p className="text-sm text-gray-600 mt-1">Purpose: {r.purpose}</p>}
+                        {r.admin_notes && <p className="text-sm text-amber-700 mt-1">Note: {r.admin_notes}</p>}
+                        <p className="text-xs text-gray-400 mt-1">
+                          Requested: {fromSqlTime(r.requested_at).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
                     {ACTIONS[r.status] && (
                       <div className="flex flex-col gap-2 shrink-0 sm:w-72">
@@ -454,7 +464,7 @@ export default function AdminPage() {
               <div key={item.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
                 <div className="h-40 bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center overflow-hidden">
                   {item.image_url
-                    ? <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                    ? <ZoomablePhoto src={item.image_url} alt={item.name} />
                     : <span className="text-4xl">{item.category === 'costume' ? '👗' : '🎭'}</span>
                   }
                 </div>

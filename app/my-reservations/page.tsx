@@ -5,6 +5,7 @@ import { api, errorMessage, fromSqlTime, getCurrentUser, localToday } from '@/li
 import { useLiveData } from '@/lib/useLiveData'
 import type { Reservation } from '@/lib/types'
 import { useRouter } from 'next/navigation'
+import ZoomablePhoto from '@/app/zoomable-photo'
 
 type ReservationWithItem = Reservation & {
   item_name?: string
@@ -169,7 +170,7 @@ export default function MyReservationsPage() {
                     {/* Item image */}
                     <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center shrink-0 overflow-hidden">
                       {r.item_image
-                        ? <img src={r.item_image} alt={r.item_name} className="w-full h-full object-cover" />
+                        ? <ZoomablePhoto src={r.item_image} alt={r.item_name ?? 'Item'} />
                         : <span className="text-3xl">🎭</span>
                       }
                     </div>
